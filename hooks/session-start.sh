@@ -30,7 +30,7 @@ echo "=== CC-Mem: 加载项目记忆 ==="
 
 # 基于项目路径检索记忆
 if [ -f "$CLI" ]; then
-    memories=$("$CLI" retrieve -p "$PROJECT_PATH" -l 5 2>/dev/null || true)
+    memories=$("$CLI" search -p "$PROJECT_PATH" -l 5 2>/dev/null || true)
     if [ -n "$memories" ]; then
         echo ""
         echo "找到以下相关记忆："

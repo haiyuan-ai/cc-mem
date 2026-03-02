@@ -1,0 +1,37 @@
+# Git 忽略文件
+
+# 测试临时文件
+/tmp/
+test-*.db
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 导出的记忆文件
+exports/
+markdown/
+cc-mem-export/
+
+# 日志文件
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.bak
+
+# 发布检查清单（发布后删除）
+GITHUB_RELEASE.md
+RELEASE_CHECKLIST.md

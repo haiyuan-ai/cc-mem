@@ -1,0 +1,16 @@
+{
+  "hooks": [
+    {
+      "name": "session-start",
+      "event": "sessionStart",
+      "script": "hooks/session-start.sh",
+      "description": "会话启动时注入记忆"
+    },
+    {
+      "name": "session-end",
+      "event": "sessionEnd",
+      "script": "hooks/session-end.sh",
+      "description": "会话结束时捕获记忆"
+    }
+  ]
+}

@@ -113,6 +113,77 @@ assert_file_exists() {
     fi
 }
 
+assert_file_executable() {
+    local file="$1"
+    local message="${2:-}"
+
+    TESTS_RUN=$((TESTS_RUN + 1))
+
+    if [ -x "$file" ]; then
+        echo -e "${GREEN}✓ PASS${NC}: $message"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        return 0
+    else
+        echo -e "${RED}✗ FAIL${NC}: $message (file not executable: $file)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        return 1
+    fi
+}
+
+assert_true() {
+    local value="$1"
+    local message="${2:-}"
+
+    TESTS_RUN=$((TESTS_RUN + 1))
+
+    if [ "$value" = "true" ] || [ "$value" = "1" ] || [ "$value" = "yes" ]; then
+        echo -e "${GREEN}✓ PASS${NC}: $message"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        return 0
+    else
+        echo -e "${RED}✗ FAIL${NC}: $message (value is not true)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        return 1
+    fi
+}
+
+assert_false() {
+    local value="$1"
+    local message="${2:-}"
+
+    TESTS_RUN=$((TESTS_RUN + 1))
+
+    if [ "$value" = "false" ] || [ "$value" = "0" ] || [ "$value" = "no" ]; then
+        echo -e "${GREEN}✓ PASS${NC}: $message"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        return 0
+    else
+        echo -e "${RED}✗ FAIL${NC}: $message (value is not false)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        return 1
+    fi
+}
+
+assert_less_than() {
+    local expected="$1"
+    local actual="$2"
+    local message="${3:-}"
+
+    TESTS_RUN=$((TESTS_RUN + 1))
+
+    if [ "$actual" -lt "$expected" ] 2>/dev/null; then
+        echo -e "${GREEN}✓ PASS${NC}: $message"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        return 0
+    else
+        echo -e "${RED}✗ FAIL${NC}: $message"
+        echo -e "  Expected less than: $expected"
+        echo -e "  Actual:   $actual"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        return 1
+    fi
+}
+
 assert_true() {
     local condition="$1"
     local message="${2:-}"

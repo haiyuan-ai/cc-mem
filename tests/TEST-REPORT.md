@@ -1,6 +1,5 @@
 # CC-Mem 测试报告
 
-**版本**: v1.3
 **测试日期**: 2026-03-02
 **测试框架**: Bash TDD (Red/Green)
 
@@ -13,7 +12,8 @@
 | **SQLite 库测试** | 66 | ✅ 100% |
 | **CLI 命令测试** | 40 | ✅ 100% |
 | **边界条件测试** | 56 | ✅ 100% |
-| **总计** | **162** | ✅ 100% |
+| **Hooks 功能测试** | 18 | ✅ 100% |
+| **总计** | **180** | ✅ 100% |
 
 ---
 
@@ -66,6 +66,19 @@
 | 错误处理 | 2 | ✅ |
 | **小计** | **22** | ✅ |
 
+### Hooks 功能测试 (18 测试函数)
+
+| 模块 | 测试函数 | 状态 |
+|------|---------|------|
+| 脚本存在性 | 4 | ✅ |
+| 语法检查 | 4 | ✅ |
+| 可执行权限 | 4 | ✅ |
+| PostToolUse 功能 | 2 | ✅ |
+| UserPromptSubmit 功能 | 1 | ✅ |
+| 批量保存阈值 | 1 | ✅ |
+| Hooks 配置 | 2 | ✅ |
+| **小计** | **18** | ✅ |
+
 ---
 
 ## 功能覆盖矩阵
@@ -83,6 +96,7 @@
 | 时间戳 epoch | ✅ | ✅ | ✅ |
 | 项目隔离 | ✅ | ✅ | ✅ |
 | get_memory/get_timeline | ✅ | - | ✅ |
+| **Hooks 实时捕获** | ✅ | ✅ | ✅ |
 
 ---
 
@@ -90,11 +104,12 @@
 
 ```
 tests/
-├── test_framework.sh       # 测试框架（195 行，12 个函数）
+├── test_framework.sh       # 测试框架（266 行，12 个函数）
 ├── test_sqlite.sh          # SQLite 库测试 (459 行，66 个函数)
 ├── test_cli.sh             # CLI 命令测试 (275 行，40 个函数)
 ├── test_edge_cases.sh      # 边界条件测试 (410 行，56 个函数)
-├── run_tests.sh            # 测试运行器 (135 行)
+├── test_hooks.sh           # Hooks 功能测试 (318 行，18 个函数)
+├── run_tests.sh            # 测试运行器 (152 行)
 └── TEST-REPORT.md          # 本文档
 ```
 
@@ -108,11 +123,11 @@ lib/
 **项目总计**:
 ```
 核心代码：  1,577 行  (bin: 625, lib: 952)
-Hooks:         98 行  (hooks: 98)
-测试代码：  1,474 行  (tests: 1,474)
-辅助脚本：    332 行  (scripts: 332)
+Hooks:       237 行  (hooks: 4 个脚本)
+测试代码：  1,778 行  (tests: 6 个文件，180 个测试)
+辅助脚本：    332 行  (scripts: 2 个文件)
 ─────────────────────────────
-项目总计：  3,481 行
+项目总计：  3,924 行
 ```
 
 ---
@@ -137,6 +152,7 @@ bash tests/run_tests.sh
 bash tests/test_sqlite.sh      # SQLite 测试
 bash tests/test_cli.sh         # CLI 测试
 bash tests/test_edge_cases.sh  # 边界测试
+bash tests/test_hooks.sh       # Hooks 功能测试
 ```
 
 ---
@@ -227,7 +243,7 @@ assert_equals "预期" "$result" "描述"
 
 ## 结论
 
-✅ **162 个测试用例 100% 通过**
+✅ **180 个测试用例 100% 通过**
 
 cc-mem 核心功能已通过完整的 Red/Green TDD 测试验证，包括：
 - 数据库 CRUD 操作
@@ -239,11 +255,13 @@ cc-mem 核心功能已通过完整的 Red/Green TDD 测试验证，包括：
 - 私有内容过滤
 - get_memory/get_timeline 检索
 - LLM 内部函数（detect_category, extract_tags, generate_summary）
+- Hooks 实时捕获
 
 **测试覆盖详情**:
-- 测试函数：162 个
+- 测试函数：180 个
 - 核心函数：32 个（sqlite.sh: 20, llm.sh: 12）
 - CLI 命令：13 个
+- Hooks 功能：4 个脚本
 
 **覆盖率**: 约 94%（32 个核心函数中覆盖 30 个）
 

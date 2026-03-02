@@ -207,28 +207,29 @@ bash bin/ccmem-cli.sh status
 
 ```json
 {
-  "hooks": {
-    "sessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/session-start.sh"
-          }
-        ]
-      }
-    ],
-    "sessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/session-end.sh"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": [
+    {
+      "name": "cc-mem-session-start",
+      "event": "sessionStart",
+      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/session-start.sh"
+    },
+    {
+      "name": "cc-mem-post-tool-use",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write|Bash",
+      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/post-tool-use.sh"
+    },
+    {
+      "name": "cc-mem-user-prompt-submit",
+      "event": "UserPromptSubmit",
+      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/user-prompt-submit.sh"
+    },
+    {
+      "name": "cc-mem-session-end",
+      "event": "sessionEnd",
+      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/session-end.sh"
+    }
+  ]
 }
 ```
 

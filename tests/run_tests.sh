@@ -78,6 +78,22 @@ run_all_tests() {
         failed=$((failed + 1))
     fi
 
+    echo ""
+    echo ""
+
+    # 运行 Hooks 测试
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📋 Hooks 功能测试"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if bash "$TESTS_DIR/test_hooks.sh"; then
+        echo ""
+        echo "✅ Hooks 测试通过"
+    else
+        echo ""
+        echo "❌ Hooks 测试失败"
+        failed=$((failed + 1))
+    fi
+
     return $failed
 }
 
@@ -105,9 +121,10 @@ main() {
         echo "               不指定则运行所有测试"
         echo ""
         echo "示例:"
-        echo "  $0                    # 运行所有测试（156 个用例）"
-        echo "  $0 tests/test_sqlite.sh  # 运行 SQLite 测试（64 个用例）"
-        echo "  $0 tests/test_cli.sh     # 运行 CLI 测试"
+        echo "  $0                    # 运行所有测试（162+ 个用例）"
+        echo "  $0 tests/test_sqlite.sh  # 运行 SQLite 测试（66 个用例）"
+        echo "  $0 tests/test_cli.sh     # 运行 CLI 测试（40 个用例）"
+        echo "  $0 tests/test_hooks.sh   # 运行 Hooks 测试（新增）"
         exit 0
     fi
 

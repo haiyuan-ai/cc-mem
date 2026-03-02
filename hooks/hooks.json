@@ -7,6 +7,19 @@
       "description": "会话启动时注入记忆"
     },
     {
+      "name": "post-tool-use",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write|Bash",
+      "script": "hooks/post-tool-use.sh",
+      "description": "工具使用后累积操作记录"
+    },
+    {
+      "name": "user-prompt-submit",
+      "event": "UserPromptSubmit",
+      "script": "hooks/user-prompt-submit.sh",
+      "description": "用户输入前批量保存记忆"
+    },
+    {
       "name": "session-end",
       "event": "sessionEnd",
       "script": "hooks/session-end.sh",

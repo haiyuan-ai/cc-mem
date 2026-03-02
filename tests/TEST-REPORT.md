@@ -1,4 +1,4 @@
-# CC-Mem 测试报告
+# CC-mem 测试报告
 
 **测试日期**: 2026-03-02
 **测试框架**: Bash TDD (Red/Green)

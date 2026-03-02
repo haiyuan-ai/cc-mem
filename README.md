@@ -1,4 +1,4 @@
-# CC-Mem
+# CC-mem
 
 Claude Code 轻量级记忆管理系统
 
@@ -8,7 +8,7 @@ Claude Code 轻量级记忆管理系统
 
 ## 产品定位
 
-**CC-Mem** 是一个专为 Claude Code 设计的**轻量级记忆管理工具**，采用纯 Bash 实现，零额外依赖。
+**CC-mem** 是一个专为 Claude Code 设计的**轻量级记忆管理工具**，采用纯 Bash 实现，零额外依赖。
 
 **目标用户**: 个人开发者、技术博主、AI 助手重度用户
 
@@ -60,19 +60,38 @@ Claude Code 轻量级记忆管理系统
 
 详细的依赖要求和安装说明见 **[兼容性指南](docs/COMPATIBILITY.md)**。
 
-### 1. 克隆/复制到此目录
+### 方法一：使用 Claude Code（推荐）
 
-```bash
-# 插件应位于 ~/.claude/plugins/marketplaces/cc-mem/
+如果你正在使用 Claude Code，可以直接让它帮你安装：
+
+```
+安装这个插件：https://github.com/haiyuan-ai/cc-mem
 ```
 
-### 2. 初始化数据库
+Claude Code 会自动完成克隆、权限设置和初始化到正确的目录。
+
+### 方法二：手动安装
+
+**步骤 1: 克隆仓库**
+
+```bash
+git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplaces/cc-mem
+```
+
+**步骤 2: 添加执行权限**
+
+```bash
+chmod +x ~/.claude/plugins/marketplaces/cc-mem/bin/*.sh
+chmod +x ~/.claude/plugins/marketplaces/cc-mem/hooks/*.sh
+```
+
+**步骤 3: 初始化数据库**
 
 ```bash
 ~/.claude/plugins/marketplaces/cc-mem/bin/ccmem-cli.sh init
 ```
 
-### 3. 配置 Hooks（可选）
+### 配置 Hooks（建议）
 
 在 Claude Code 配置中注册 hooks：
 
@@ -122,6 +141,33 @@ wsl bash ~/.claude/plugins/marketplaces/cc-mem/bin/ccmem-cli.sh init
 choco install sqlite
 bash bin/ccmem-cli.sh init
 ```
+
+---
+
+## 卸载
+
+如需卸载 cc-mem：
+
+**步骤 1: 移除 Hooks 配置**
+
+编辑 Claude Code 配置文件，删除所有 `cc-mem-*` 相关的 hooks。
+
+**步骤 2: 删除插件目录**
+
+```bash
+rm -rf ~/.claude/plugins/marketplaces/cc-mem
+```
+
+**步骤 3: 删除数据库（可选）**
+
+```bash
+# 默认路径
+rm -rf ~/.claude/cc-mem/memory.db
+# 或自定义路径
+rm -rf ~/.config/cc-mem/memory.db
+```
+
+---
 
 ## 使用方法
 
@@ -522,7 +568,7 @@ ccmem-cli.sh capture -t "important,architecture,database"
 
 ## 竞品对比
 
-| 特性 | **CC-Mem** | claude-mem | memU | mem0 |
+| 特性 | **CC-mem** | claude-mem | memU | mem0 |
 |------|------------|------------|------|------|
 | **实现语言** | Bash | TypeScript | Python | Python |
 | **依赖要求** | 仅 SQLite | Node/Bun | Python | Python |
@@ -543,12 +589,12 @@ ccmem-cli.sh capture -t "important,architecture,database"
 
 | 需求 | 推荐项目 |
 |------|----------|
-| 个人轻量使用 | **CC-Mem** ✅ |
+| 个人轻量使用 | **CC-mem** ✅ |
 | 企业级部署 | mem0 |
 | 需要向量检索 | mem0 / memU |
 | 需要 Graph 记忆 | memU |
 | 需要 Web UI | claude-mem / mem0 |
-| 零依赖安装 | **CC-Mem** ✅ |
+| 零依赖安装 | **CC-mem** ✅ |
 
 ---
 
@@ -571,13 +617,13 @@ ccmem-cli.sh capture -t "important,architecture,database"
 
 ## 致谢
 
-CC-Mem 在开发过程中参考了以下优秀项目，感谢它们在产品功能特性层面提供的参考：
+CC-mem 在开发过程中参考了以下优秀项目，感谢它们在产品功能特性层面提供的参考：
 
 - **[claude-mem](https://github.com/thedotmack/claude-mem)** - Hooks 集成架构、会话上下文文件设计
 - **[memU](https://github.com/NevaMind-AI/memU)** - 记忆作为文件系统理念、Proactive Memory 设计
 - **[mem0](https://github.com/mem0ai/mem0)** - 事实提取 Prompt、记忆历史追踪、测试框架参考
 
-CC-Mem 定位为轻量级替代方案，采用纯 Bash 实现，专注于个人用户的简单使用场景。
+CC-mem 定位为轻量级替代方案，采用纯 Bash 实现，专注于个人用户的简单使用场景。
 
 ---
 

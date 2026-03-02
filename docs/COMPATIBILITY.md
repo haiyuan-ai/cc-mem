@@ -1,6 +1,6 @@
-# CC-Mem 兼容性指南
+# CC-mem 兼容性指南
 
-本文档说明 CC-Mem 在不同操作系统上的兼容性要求和注意事项。
+本文档说明 CC-mem 在不同操作系统上的兼容性要求和注意事项。
 
 ## 系统要求
 
@@ -118,7 +118,7 @@ bash ~/.claude/plugins/marketplaces/cc-mem/scripts/check-compat.sh
 ### 检查输出示例
 
 ```
-=== CC-Mem 兼容性检查 ===
+=== CC-mem 兼容性检查 ===
 
 系统：Darwin 25.3.0
 Bash 版本：GNU bash, version 3.2.57

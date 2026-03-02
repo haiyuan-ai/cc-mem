@@ -36,7 +36,7 @@ bash scripts/test-git-bash.sh
 ## 预期输出
 
 ```
-=== CC-Mem 兼容性检查 ===
+=== CC-mem 兼容性检查 ===
 环境：Git Bash for Windows
 HOME: /c/Users/YourName (USERPROFILE: C:\Users\YourName)
 

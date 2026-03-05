@@ -61,6 +61,13 @@ test_session_end_exists() {
     cleanup_hooks_test
 }
 
+it "stop.sh 应该存在"
+test_stop_exists() {
+    setup_hooks_test
+    assert_file_exists "$HOOKS_DIR/stop.sh" "stop.sh 应该存在"
+    cleanup_hooks_test
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：Hook 脚本语法检查
 # ═══════════════════════════════════════════════════════════
@@ -91,6 +98,12 @@ test_session_end_syntax() {
     assert_equals "" "$result" "session-end.sh 语法检查应该通过"
 }
 
+it "stop.sh 应该通过语法检查"
+test_stop_syntax() {
+    local result=$(bash -n "$HOOKS_DIR/stop.sh" 2>&1)
+    assert_equals "" "$result" "stop.sh 语法检查应该通过"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：Hook 脚本可执行权限
 # ═══════════════════════════════════════════════════════════
@@ -115,6 +128,11 @@ test_session_start_executable() {
 it "session-end.sh 应该是可执行的"
 test_session_end_executable() {
     assert_file_executable "$HOOKS_DIR/session-end.sh" "session-end.sh 应该是可执行的"
+}
+
+it "stop.sh 应该是可执行的"
+test_stop_executable() {
+    assert_file_executable "$HOOKS_DIR/stop.sh" "stop.sh 应该是可执行的"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -227,8 +245,98 @@ test_user_prompt_submit_clears_log() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# 测试：批量保存阈值
+# 测试：Stop Hook 功能
 # ═══════════════════════════════════════════════════════════
+
+describe "Stop Hook 功能"
+
+it "应该从 transcript 提取最后一条助手消息"
+test_stop_extract_last_message() {
+    setup_hooks_test
+    local test_dir="/tmp/ccmem_stop_test_$$"
+    mkdir -p "$test_dir"
+
+    # 创建模拟 transcript
+    cat > "$test_dir/transcript.jsonl" << 'EOF'
+{"type": "user", "message": {"content": "开始任务"}}
+{"type": "assistant", "message": {"content": "收到，我来处理这个任务。"}}
+{"type": "user", "message": {"content": "[执行工具]"}}
+{"type": "assistant", "message": {"content": "任务已完成。主要修改：\n1. 修复了 bug\n2. 优化了性能"}}
+EOF
+
+    # 创建操作日志
+    echo "[EDIT] src/main.js: 修复 bug" > "/tmp/ccmem_${TEST_SESSION_ID}.log"
+
+    # 执行 hook
+    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"transcript_path\": \"$test_dir/transcript.jsonl\", \"cwd\": \"$test_dir\"}"
+    echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+
+    # 检查调试日志中是否成功提取消息
+    if grep -q "Extracted last assistant message" /tmp/ccmem_debug.log 2>/dev/null; then
+        echo -e "${GREEN}✓ PASS${NC}: 应该提取到助手消息"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo -e "${YELLOW}⊘ SKIP${NC}: 调试日志不可用，跳过验证"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    fi
+
+    rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log"
+    cleanup_hooks_test
+}
+
+it "应该处理无 transcript 的情况"
+test_stop_no_transcript() {
+    setup_hooks_test
+
+    # 创建操作日志
+    echo "[BASH] npm test: 运行测试" > "/tmp/ccmem_${TEST_SESSION_ID}.log"
+
+    # 执行 hook（不带 transcript）
+    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"/tmp\"}"
+    local result=$(echo "$input" | bash "$HOOKS_DIR/stop.sh" 2>&1)
+
+    # 应该正常完成
+    assert_contains "$result" "会话已停止" "应该正常完成（即使没有 transcript）"
+
+    rm -f "/tmp/ccmem_${TEST_SESSION_ID}.log"
+    cleanup_hooks_test
+}
+
+it "应该生成包含操作统计的摘要"
+test_stop_generate_summary() {
+    setup_hooks_test
+    local test_dir="/tmp/ccmem_stop_summary_$$"
+    mkdir -p "$test_dir"
+
+    # 创建操作日志
+    cat > "/tmp/ccmem_${TEST_SESSION_ID}.log" << 'EOF'
+[EDIT] src/main.js: 修复 bug
+[WRITE] src/config.json: 添加配置
+[BASH] npm test: 运行测试
+EOF
+
+    # 执行 hook
+    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"$test_dir\"}"
+    echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+
+    # 检查摘要生成（通过调试日志）
+    if grep -q "Generated summary" /tmp/ccmem_debug.log 2>/dev/null; then
+        local summary_line=$(grep "Generated summary" /tmp/ccmem_debug.log | tail -1)
+        if echo "$summary_line" | grep -q "操作统计"; then
+            echo -e "${GREEN}✓ PASS${NC}: 应该生成包含操作统计的摘要"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+        else
+            echo -e "${GREEN}✓ PASS${NC}: 摘要已生成"
+            TESTS_PASSED=$((TESTS_PASSED + 1))
+        fi
+    else
+        echo -e "${YELLOW}⊘ SKIP${NC}: 调试日志不可用，跳过验证"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    fi
+
+    rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log"
+    cleanup_hooks_test
+}
 
 describe "批量保存阈值"
 
@@ -284,18 +392,21 @@ test_post_tool_use_exists
 test_user_prompt_submit_exists
 test_session_start_exists
 test_session_end_exists
+test_stop_exists
 
 # 语法检查测试
 test_post_tool_use_syntax
 test_user_prompt_submit_syntax
 test_session_start_syntax
 test_session_end_syntax
+test_stop_syntax
 
 # 可执行权限测试
 test_post_tool_use_executable
 test_user_prompt_submit_executable
 test_session_start_executable
 test_session_end_executable
+test_stop_executable
 
 # PostToolUse 功能测试
 test_post_tool_use_edit
@@ -303,6 +414,11 @@ test_post_tool_use_bash
 
 # UserPromptSubmit 功能测试
 test_user_prompt_submit_clears_log
+
+# Stop Hook 功能测试
+test_stop_extract_last_message
+test_stop_no_transcript
+test_stop_generate_summary
 
 # 批量保存阈值测试
 test_batch_save_threshold

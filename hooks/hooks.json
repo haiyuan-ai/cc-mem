@@ -1,29 +1,60 @@
 {
-  "hooks": [
-    {
-      "name": "session-start",
-      "event": "sessionStart",
-      "script": "hooks/session-start.sh",
-      "description": "会话启动时注入记忆"
-    },
-    {
-      "name": "post-tool-use",
-      "event": "PostToolUse",
-      "matcher": "Edit|Write|Bash",
-      "script": "hooks/post-tool-use.sh",
-      "description": "工具使用后累积操作记录"
-    },
-    {
-      "name": "user-prompt-submit",
-      "event": "UserPromptSubmit",
-      "script": "hooks/user-prompt-submit.sh",
-      "description": "用户输入前批量保存记忆"
-    },
-    {
-      "name": "session-end",
-      "event": "sessionEnd",
-      "script": "hooks/session-end.sh",
-      "description": "会话结束时捕获记忆"
-    }
-  ]
+  "description": "CC-Mem: 会话记忆自动捕获",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/stop.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-end.sh"
+          }
+        ]
+      }
+    ]
+  }
 }

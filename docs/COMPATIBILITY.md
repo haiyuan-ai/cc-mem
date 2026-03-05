@@ -201,45 +201,16 @@ cd ~/cc-mem
 bash bin/ccmem-cli.sh status
 ```
 
-**步骤 4: 配置 Claude Code**
+**步骤 4: 验证 hooks 工作**
 
-在 Windows 的 Claude Code 配置中，hooks 需要指向 WSL2：
+WSL2 环境下，cc-mem 的插件级 hooks 配置会自动生效。重启 Claude Code 后检查调试日志：
 
-```json
-{
-  "hooks": [
-    {
-      "name": "cc-mem-session-start",
-      "event": "sessionStart",
-      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/session-start.sh"
-    },
-    {
-      "name": "cc-mem-post-tool-use",
-      "event": "PostToolUse",
-      "matcher": "Edit|Write|Bash",
-      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/post-tool-use.sh"
-    },
-    {
-      "name": "cc-mem-user-prompt-submit",
-      "event": "UserPromptSubmit",
-      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/user-prompt-submit.sh"
-    },
-    {
-      "name": "cc-mem-session-end",
-      "event": "sessionEnd",
-      "command": "wsl bash ~/.claude/plugins/marketplaces/cc-mem/hooks/session-end.sh"
-    }
-  ]
-}
+```bash
+# 在 WSL2 中查看日志
+cat /tmp/ccmem_debug.log
 ```
 
 **WSL2 方案优缺点**:
-
-| 优点 | 缺点 |
-|------|------|
-| ✅ 100% 兼容，无需修改代码 | ⚠️ 需要启用 WSL 功能 |
-| ✅ 性能良好 | ⚠️ 占用少量系统资源 |
-| ✅ 与 Linux/macOS 体验一致 | ⚠️ Hooks 配置需要 wsl 前缀 |
 
 ---
 
@@ -328,16 +299,6 @@ cp -r /mnt/c/Users/Name/.claude ~/claude
 
 # 然后在 WSL2 内使用
 cd ~/claude
-```
-
-#### Q: Hooks 在 Windows 下不工作
-
-**A**: 需要在命令前添加 `wsl` 前缀：
-
-```json
-{
-  "command": "wsl bash -c '~/.claude/plugins/marketplaces/cc-mem/hooks/session-start.sh'"
-}
 ```
 
 #### Q: Git Bash 中提示 `sqlite3: command not found`

@@ -43,11 +43,11 @@ cc-mem/
 │   ├── COMPATIBILITY.md      # 兼容性指南
 │   └── GIT-BASH-TEST.md      # Git Bash 测试（89 行精简版）
 ├── tests/
-│   ├── TEST-REPORT.md        # 测试报告（180 个用例）
+│   ├── TEST-REPORT.md        # 测试报告（133 个用例）
 │   ├── test_sqlite.sh        # SQLite 测试（66 个函数）
 │   ├── test_cli.sh           # CLI 测试（40 个函数）
 │   ├── test_edge_cases.sh    # 边界测试（56 个函数）
-│   ├── test_hooks.sh         # Hooks 功能测试（18 个函数）
+│   ├── test_hooks.sh         # Hooks 功能测试（22 个函数）
 │   ├── test_framework.sh     # 测试框架（12 个函数）
 │   └── run_tests.sh          # 测试运行器
 ├── bin/
@@ -56,9 +56,10 @@ cc-mem/
 │   ├── sqlite.sh             # SQLite 操作库 (623 行，20 个函数)
 │   └── llm.sh                # LLM 压缩功能 (329 行，12 个函数)
 ├── hooks/
-│   ├── hooks.json            # Hooks 配置
+│   ├── hooks.json            # Hooks 配置（插件级别，自动加载）
 │   ├── session-start.sh      # SessionStart Hook
-│   ├── session-end.sh        # SessionEnd Hook
+│   ├── session-end.sh        # SessionEnd Hook（正常结束）
+│   ├── stop.sh               # Stop Hook（会话中断时触发，可访问 transcript）
 │   ├── post-tool-use.sh      # PostToolUse Hook (实时捕获)
 │   └── user-prompt-submit.sh # UserPromptSubmit Hook (批量保存)
 ├── config/
@@ -92,12 +93,5 @@ cc-mem/
 - 概念标签自动识别
 - 私有内容过滤
 - Markdown 导出
-- Hooks 实时捕获：PostToolUse + UserPromptSubmit + SessionEnd 三层捕获机制
-
-**代码统计**:
-- 核心代码：1,577 行 (bin: 625 行，lib: 952 行)
-- Hooks: 237 行（4 个脚本）
-- 测试代码：1,778 行（6 个文件，180 个测试用例）
-- 辅助脚本：332 行（2 个文件）
-- 项目总计：约 3,924 行
-- 测试覆盖率：约 94%
+- **Hooks 实时捕获**：PostToolUse + UserPromptSubmit + Stop + SessionEnd 四层捕获机制
+  - Stop Hook 支持访问 transcript 生成会话摘要

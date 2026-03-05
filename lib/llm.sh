@@ -283,9 +283,10 @@ detect_category() {
 extract_tags() {
     local content="$1"
 
-    # 提取技术相关关键词
+    # 提取技术相关关键词（不区分大小写，结果转换为小写）
     local tags=$(echo "$content" | \
-        grep -oE '\b(python|javascript|typescript|react|node|docker|kubernetes|aws|gcp|azure|git|sql|nosql|api|rest|graphql|bash|shell|linux|macos|windows)\b' | \
+        grep -oiE '\b(python|javascript|typescript|react|node|docker|kubernetes|aws|gcp|azure|git|sql|nosql|api|rest|graphql|bash|shell|linux|macos|windows)\b' | \
+        tr '[:upper:]' '[:lower:]' | \
         sort -u | \
         tr '\n' ',' | \
         sed 's/,$//')

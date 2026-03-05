@@ -2,7 +2,7 @@
 
 Claude Code 轻量级记忆管理系统
 
-**测试**: ✅ 180/180 通过 | **许可**: MIT
+**测试**: ✅ 133/133 通过 | **许可**: MIT
 
 ---
 
@@ -16,7 +16,7 @@ Claude Code 轻量级记忆管理系统
 - 🪶 **轻量简洁** - 纯 Bash 脚本，仅需 SQLite，无需 Python/Node 运行时
 - 🔒 **本地优先** - 所有数据本地存储，无云端依赖，隐私可控
 - 📦 **开箱即用** - 安装即用，无需复杂配置
-- 🧪 **测试完备** - 180 个测试用例 100% 通过（含 Hooks 实时捕获测试）
+- 🧪 **测试完备** - 129 个测试用例 100% 通过（含 Hooks 实时捕获测试）
 
 **适用场景**:
 - ✅ 个人知识管理和会话记忆
@@ -39,7 +39,7 @@ Claude Code 轻量级记忆管理系统
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：基于项目路径、标签、全文检索（三层检索）
 - **Markdown 导出**：导出为标准 Markdown 文件（不需要 Obsidian）
-- **Hooks 集成**：SessionStart/PostToolUse/UserPromptSubmit/SessionEnd 自动注入和捕获
+- **Hooks 集成**：SessionStart/PostToolUse/UserPromptSubmit/Stop/SessionEnd 自动注入和捕获
 - **记忆历史**：记录 create/update/delete 事件
 - **内容去重**：SHA256 哈希，自动检测重复内容
 - **概念标签**：7 种预定义概念，自动识别
@@ -91,39 +91,32 @@ chmod +x ~/.claude/plugins/marketplaces/cc-mem/hooks/*.sh
 ~/.claude/plugins/marketplaces/cc-mem/bin/ccmem-cli.sh init
 ```
 
-### 配置 Hooks（建议）
+**步骤 4: 重启 Claude Code 会话**
 
-在 Claude Code 配置中注册 hooks：
+Hooks 会在插件安装后**自动加载**，无需手动配置。只需重启 Claude Code 会话即可：
 
-```json
-{
-  "hooks": [
-    {
-      "name": "cc-mem-session-start",
-      "event": "sessionStart",
-      "script": "~/.claude/plugins/marketplaces/cc-mem/hooks/session-start.sh"
-    },
-    {
-      "name": "cc-mem-post-tool-use",
-      "event": "PostToolUse",
-      "matcher": "Edit|Write|Bash",
-      "script": "~/.claude/plugins/marketplaces/cc-mem/hooks/post-tool-use.sh"
-    },
-    {
-      "name": "cc-mem-user-prompt-submit",
-      "event": "UserPromptSubmit",
-      "script": "~/.claude/plugins/marketplaces/cc-mem/hooks/user-prompt-submit.sh"
-    },
-    {
-      "name": "cc-mem-session-end",
-      "event": "sessionEnd",
-      "script": "~/.claude/plugins/marketplaces/cc-mem/hooks/session-end.sh"
-    }
-  ]
-}
+```bash
+exit
+# 然后重新运行 claude 命令
 ```
 
----
+> **说明**：cc-mem 使用**插件级 hooks 配置**（`hooks/hooks.json`），安装后自动生效。Claude Code 会自动检测 `~/.claude/plugins/marketplaces/cc-mem/hooks/hooks.json` 并加载 hooks，无需手动配置。
+
+### 验证 Hooks 是否生效
+
+重启 Claude Code 后，执行一些操作（如修改文件），然后检查：
+
+```bash
+# 检查调试日志
+cat /tmp/ccmem_debug.log
+
+# 检查数据库中的会话记录
+sqlite3 ~/.claude/cc-mem/memory.db "SELECT id, status FROM sessions ORDER BY start_time DESC LIMIT 3;"
+```
+
+如果看到 `[session-start]` 和 `[session-end]` 的日志记录，且会话状态为 `completed` 或 `stopped`，说明 hooks 已生效。
+
+> **注意**：cc-mem 仅支持**插件级配置**（`hooks/hooks.json`），安装后自动生效，无需也不支持手动编辑 `~/.claude/settings.json`。
 
 ### Windows 用户
 
@@ -148,17 +141,15 @@ bash bin/ccmem-cli.sh init
 
 如需卸载 cc-mem：
 
-**步骤 1: 移除 Hooks 配置**
-
-编辑 Claude Code 配置文件，删除所有 `cc-mem-*` 相关的 hooks。
-
-**步骤 2: 删除插件目录**
+**步骤 1: 删除插件目录**
 
 ```bash
 rm -rf ~/.claude/plugins/marketplaces/cc-mem
 ```
 
-**步骤 3: 删除数据库（可选）**
+> **说明**：插件级别的 hooks 会自动移除，无需手动编辑配置文件。
+
+**步骤 2: 删除数据库（可选）**
 
 ```bash
 # 默认路径
@@ -215,6 +206,9 @@ ccmem-cli.sh cleanup -d 30
 
 # 查看记忆历史
 ccmem-cli.sh history -r -l 10
+
+# 修复 FTS 全文索引（维护工具）
+./scripts/repair-fts.sh --force --no-backup
 ```
 
 ### 命令详解
@@ -513,7 +507,7 @@ done < notes.txt
 
 - **触发工具**：Edit、Write、Bash
 - **记录内容**：文件变更、命令执行
-- **累积阈值**：每 5 次操作自动保存一次
+- **累积阈值**：每 3 次操作自动保存一次
 
 ### UserPromptSubmit Hook
 

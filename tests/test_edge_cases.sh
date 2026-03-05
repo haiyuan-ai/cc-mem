@@ -8,6 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 加载测试框架
 source "$SCRIPT_DIR/tests/test_framework.sh"
 
+# 加载 sqlite.sh（数据库操作库）
+source "$SCRIPT_DIR/lib/sqlite.sh"
+
+# 加载 llm.sh（LLM 相关函数库）
+source "$SCRIPT_DIR/lib/llm.sh"
+
+# 设置测试环境（加载 sqlite.sh 并初始化数据库）
+setup_test_db
+
 # ═══════════════════════════════════════════════════════════
 # 测试：空值处理
 # ═══════════════════════════════════════════════════════════
@@ -266,9 +275,6 @@ test_invalid_category() {
 # ═══════════════════════════════════════════════════════════
 
 describe "LLM 和私有内容测试"
-
-# 加载 llm.sh
-source "$SCRIPT_DIR/../lib/llm.sh"
 
 it "应该能加载 LLM profile"
 test_load_llm_profile_compression() {

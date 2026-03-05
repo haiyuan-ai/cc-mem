@@ -60,33 +60,31 @@ Claude Code 轻量级记忆管理系统
 
 详细的依赖要求和安装说明见 **[兼容性指南](docs/COMPATIBILITY.md)**。
 
-### 方法一：使用 `/plugin` 命令（推荐）
+### 方法一：让 Claude Code 帮你安装（推荐）
 
-在 Claude Code 中运行：
+直接告诉 Claude Code：
 
-```bash
-/plugin install github:haiyuan-ai/cc-mem
+```
+安装 https://github.com/haiyuan-ai/cc-mem
 ```
 
-或者，如果 marketplace 已注册：
+Claude Code 会自动完成：
+1. 克隆仓库到 `~/.claude/plugins/marketplaces/cc-mem`
+2. 注册 marketplace 到 `known_marketplaces.json`
+3. 安装插件到 `installed_plugins.json`
+4. 重启后会自动加载 hooks
+
+### 方法二：使用 `/plugin` 命令
+
+> ⚠️ **注意**：`/plugin install github:haiyuan-ai/cc-mem` **不能直接工作**，因为 Claude Code 需要 marketplace 先注册。
+
+如果你已经通过方式1或其他方式注册了 marketplace，可以使用：
 
 ```bash
 /plugin install cc-mem@cc-mem
 ```
 
-安装完成后，**重启 Claude Code 会话**即可自动加载 hooks。
-
-### 方法二：让 Claude Code 帮你安装
-
-告诉 Claude Code：
-
-```
-安装这个插件：https://github.com/haiyuan-ai/cc-mem
-```
-
-Claude Code 会自动完成安装和配置。
-
-### 方法三：手动安装
+### 方法三：完全手动安装
 
 **步骤 1: 克隆仓库**
 
@@ -105,7 +103,7 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
       "source": "github",
       "repo": "haiyuan-ai/cc-mem"
     },
-    "installLocation": "/Users/ningoo/.claude/plugins/marketplaces/cc-mem",
+    "installLocation": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/cc-mem",
     "lastUpdated": "2026-03-05T19:00:00.000Z"
   }
 }
@@ -113,8 +111,19 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
 
 **步骤 3: 安装插件**
 
-```bash
-/plugin install cc-mem@cc-mem
+编辑 `~/.claude/plugins/installed_plugins.json`，在 `plugins` 对象中添加：
+
+```json
+"cc-mem@cc-mem": [
+  {
+    "scope": "user",
+    "installPath": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/cc-mem",
+    "version": "1.0.0",
+    "installedAt": "2026-03-05T12:00:00.000Z",
+    "lastUpdated": "2026-03-05T12:00:00.000Z",
+    "gitCommitSha": "3a703dc1e6c401a350374053cd4f004743aed54e"
+  }
+]
 ```
 
 **步骤 4: 重启 Claude Code 会话**
@@ -130,7 +139,20 @@ exit
 
 ## 卸载
 
-如需卸载 cc-mem：
+### 方法一：使用 `/plugin` 命令（推荐）
+
+```bash
+/plugin uninstall cc-mem@cc-mem
+```
+
+然后重启 Claude Code 会话：
+
+```bash
+exit
+# 重新运行 claude
+```
+
+### 方法二：手动卸载
 
 **步骤 1: 删除插件目录**
 
@@ -140,13 +162,24 @@ rm -rf ~/.claude/plugins/marketplaces/cc-mem
 
 > **说明**：插件级别的 hooks 会自动移除，无需手动编辑配置文件。
 
-**步骤 2: 删除数据库（可选）**
+**步骤 2: 清理 Marketplace 注册（可选）**
+
+编辑 `~/.claude/plugins/known_marketplaces.json`，删除 `cc-mem` 条目。
+
+**步骤 3: 删除数据库（可选）**
 
 ```bash
 # 默认路径
 rm -rf ~/.claude/cc-mem/memory.db
 # 或自定义路径
 rm -rf ~/.config/cc-mem/memory.db
+```
+
+**步骤 4: 重启 Claude Code 会话**
+
+```bash
+exit
+# 重新运行 claude
 ```
 
 ---

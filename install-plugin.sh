@@ -8,7 +8,9 @@ OWNER="haiyuan-ai"
 REPO="cc-mem"
 VERSION="1.4.0"
 CLAUDE_DIR="${HOME}/.claude/plugins"
-INSTALL_DIR="${CLAUDE_DIR}/marketplaces/${OWNER}"
+# Claude Code 期望的 marketplace 目录名格式: owner-repo
+MARKETPLACE_NAME="${OWNER}-${REPO}"
+INSTALL_DIR="${CLAUDE_DIR}/marketplaces/${MARKETPLACE_NAME}"
 
 echo "📦 安装 CC-Mem ${VERSION}..."
 
@@ -52,8 +54,8 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
 
 if [ "$HAS_JQ" = true ]; then
     TMP_FILE=$(mktemp)
-    jq --arg owner "$OWNER" --arg repo "${OWNER}/${REPO}" --arg path "$INSTALL_DIR" --arg date "$TIMESTAMP" '
-        .[$owner] = {
+    jq --arg name "$MARKETPLACE_NAME" --arg repo "${OWNER}/${REPO}" --arg path "$INSTALL_DIR" --arg date "$TIMESTAMP" '
+        .[$name] = {
             "source": {"source": "github", "repo": $repo},
             "installLocation": $path,
             "lastUpdated": $date
@@ -62,7 +64,7 @@ if [ "$HAS_JQ" = true ]; then
 else
     # 基本 JSON 处理（无 jq）
     cat > /tmp/ccmem_marketplace.json << EOF
-{"${OWNER}":{"source":{"source":"github","repo":"${OWNER}/${REPO}"},"installLocation":"${INSTALL_DIR}","lastUpdated":"${TIMESTAMP}"}}
+{"${MARKETPLACE_NAME}":{"source":{"source":"github","repo":"${OWNER}/${REPO}"},"installLocation":"${INSTALL_DIR}","lastUpdated":"${TIMESTAMP}"}}
 EOF
     # 简单合并（假设文件格式正确）
     python3 -c "
@@ -89,8 +91,8 @@ COMMIT_SHA=$(cd "$INSTALL_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknow
 
 if [ "$HAS_JQ" = true ]; then
     TMP_FILE=$(mktemp)
-    jq --arg owner "$OWNER" --arg path "$INSTALL_DIR" --arg version "$VERSION" --arg sha "$COMMIT_SHA" --arg date "$TIMESTAMP" '
-        .plugins["cc-mem@" + $owner] = [{
+    jq --arg name "$MARKETPLACE_NAME" --arg path "$INSTALL_DIR" --arg version "$VERSION" --arg sha "$COMMIT_SHA" --arg date "$TIMESTAMP" '
+        .plugins["cc-mem@" + $name] = [{
             "scope": "user",
             "installPath": $path,
             "version": $version,
@@ -101,7 +103,7 @@ if [ "$HAS_JQ" = true ]; then
     ' "$INSTALLED_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$INSTALLED_FILE"
 else
     cat > /tmp/ccmem_installed.json << EOF
-{"cc-mem@${OWNER}":[{"scope":"user","installPath":"${INSTALL_DIR}","version":"${VERSION}","installedAt":"${TIMESTAMP}","lastUpdated":"${TIMESTAMP}","gitCommitSha":"${COMMIT_SHA}"}]}
+{"cc-mem@${MARKETPLACE_NAME}":[{"scope":"user","installPath":"${INSTALL_DIR}","version":"${VERSION}","installedAt":"${TIMESTAMP}","lastUpdated":"${TIMESTAMP}","gitCommitSha":"${COMMIT_SHA}"}]}
 EOF
     python3 -c "
 import json, sys
@@ -131,5 +133,5 @@ echo "   1. 按 Ctrl+D 或输入 exit"
 echo "   2. 重新运行 claude"
 echo ""
 echo "📋 重启后运行 /plugin 可查看:"
-echo "   Marketplace: ● haiyuan-ai"
+echo "   Marketplace: ● ${MARKETPLACE_NAME}"
 echo "   Installed:   ● cc-mem v${VERSION}"

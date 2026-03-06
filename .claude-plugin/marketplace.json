@@ -1,5 +1,5 @@
 {
-  "name": "haiyuan-ai",
+  "name": "haiyuan-ai-cc-mem",
   "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现",
   "owner": {
     "name": "haiyuan-ai"
@@ -12,7 +12,7 @@
       "author": {
         "name": "haiyuan-ai"
       },
-      "source": ".",
+      "source": "./",
       "category": "productivity",
       "homepage": "https://github.com/haiyuan-ai/cc-mem"
     }

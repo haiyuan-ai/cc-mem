@@ -38,6 +38,10 @@ cc-mem/
 ├── README.md                 # 主文档（含快速开始、示例、最佳实践）
 ├── LICENSE                   # MIT 许可
 ├── .gitignore                # Git 忽略规则
+├── install-plugin.sh         # 一键安装脚本
+├── .claude-plugin/
+│   ├── marketplace.json      # Claude Code Marketplace 配置
+│   └── plugin.json           # 插件元数据
 ├── docs/
 │   ├── INDEX.md              # 文档索引
 │   ├── COMPATIBILITY.md      # 兼容性指南
@@ -66,6 +70,7 @@ cc-mem/
 │   └── config.json           # 配置文件
 └── scripts/
     ├── check-compat.sh       # 兼容性检查脚本
+    ├── repair-fts.sh         # FTS 索引修复脚本
     └── test-git-bash.sh      # Git Bash 测试脚本
 ```
 

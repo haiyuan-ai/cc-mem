@@ -23,6 +23,7 @@ setup_hooks_test() {
 cleanup_hooks_test() {
     # 清理测试日志
     rm -f "/tmp/ccmem_${TEST_SESSION_ID}.log"
+    rm -f "/tmp/ccmem_debug.log"
     unset CLAUDE_SESSION_ID
     unset TEST_SESSION_ID
 }
@@ -255,6 +256,7 @@ test_stop_extract_last_message() {
     setup_hooks_test
     local test_dir="/tmp/ccmem_stop_test_$$"
     mkdir -p "$test_dir"
+    rm -f /tmp/ccmem_debug.log
 
     # 创建模拟 transcript
     cat > "$test_dir/transcript.jsonl" << 'EOF'
@@ -307,11 +309,12 @@ test_stop_generate_summary() {
     setup_hooks_test
     local test_dir="/tmp/ccmem_stop_summary_$$"
     mkdir -p "$test_dir"
+    rm -f /tmp/ccmem_debug.log
 
-    # 创建操作日志
+    # 创建操作日志（使用真实的 FILE_CHANGE 格式）
     cat > "/tmp/ccmem_${TEST_SESSION_ID}.log" << 'EOF'
-[EDIT] src/main.js: 修复 bug
-[WRITE] src/config.json: 添加配置
+[FILE_CHANGE] src/main.js: 修复 bug
+[FILE_CHANGE] src/config.json: 添加配置
 [BASH] npm test: 运行测试
 EOF
 
@@ -322,12 +325,10 @@ EOF
     # 检查摘要生成（通过调试日志）
     if grep -q "Generated summary" /tmp/ccmem_debug.log 2>/dev/null; then
         local summary_line=$(grep "Generated summary" /tmp/ccmem_debug.log | tail -1)
-        if echo "$summary_line" | grep -q "操作统计"; then
-            echo -e "${GREEN}✓ PASS${NC}: 应该生成包含操作统计的摘要"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
+        if echo "$summary_line" | grep -q "Files="; then
+            assert_true "true" "应该生成包含操作统计的摘要"
         else
-            echo -e "${GREEN}✓ PASS${NC}: 摘要已生成"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
+            assert_true "false" "摘要已生成但没有操作统计（Files=）"
         fi
     else
         echo -e "${YELLOW}⊘ SKIP${NC}: 调试日志不可用，跳过验证"

@@ -198,6 +198,17 @@ test_retrieve_by_project() {
     assert_true "[[ ! \"$result\" == *\"项目 B 摘要\"* ]]" "不应该返回项目 B 的记忆"
 }
 
+it "项目路径包含单引号时也应该能检索"
+test_retrieve_by_project_with_quote() {
+    local quoted_project="/project/O'Brien"
+    store_memory "session1" "$quoted_project" "context" "带单引号路径的内容" "带单引号路径摘要" "tag'o" ""
+    store_memory "session2" "/project/Other" "context" "其他项目内容" "其他项目摘要" "" ""
+
+    local result=$(retrieve_memories "$quoted_project" "" "" 10)
+    assert_contains "$result" "带单引号路径摘要" "应该返回带单引号路径的记忆"
+    assert_true "[[ ! \"$result\" == *\"其他项目摘要\"* ]]" "不应该返回其他项目的记忆"
+}
+
 it "应该按类别检索"
 test_retrieve_by_category() {
     store_memory "session1" "/test" "decision" "决策内容" "摘要" "" ""
@@ -209,14 +220,76 @@ test_retrieve_by_category() {
 
 it "应该支持全文检索"
 test_retrieve_fulltext_search() {
-    # FTS5 全文检索需要内容被正确索引
-    # 这里测试基本的检索功能
-    store_memory "session1" "/test" "context" "SQLite 性能优化方法" "SQLite 优化摘要" "sqlite" ""
+    # 存储包含特定关键词的记忆
+    local unique_content="FTS测试_$(date +%s)_SQLite全文检索"
+    store_memory "session1" "/test" "context" "$unique_content" "SQLite 优化摘要" "sqlite" ""
     store_memory "session2" "/test" "context" "其他无关内容" "其他摘要" "" ""
 
-    # 使用项目路径和类别进行检索（更可靠）
-    local result=$(retrieve_memories "/test" "" "context" 10)
-    assert_contains "$result" "SQLite 优化摘要" "应该找到包含 SQLite 的记忆"
+    # 使用全文检索搜索关键词
+    local result=$(retrieve_memories "/test" "SQLite" "" 10)
+    assert_contains "$result" "SQLite 优化摘要" "全文检索应该找到包含 SQLite 的记忆"
+}
+
+it "全文检索应该支持混合内容"
+test_retrieve_fulltext_search_mixed() {
+    # 存储包含中英文混合内容的记忆
+    local unique_content="mixed_content_$(date +%s)_优化方法"
+    store_memory "session1" "/test" "context" "$unique_content" "混合内容测试摘要" "mixed" ""
+
+    # 使用英文部分搜索
+    local result=$(retrieve_memories "/test" "mixed_content" "" 10)
+    assert_contains "$result" "混合内容测试摘要" "全文检索应该能找到混合内容的记忆"
+}
+
+it "中文查询应该能通过 fallback 找到内容"
+test_retrieve_fulltext_search_cjk_fallback_content() {
+    local unique_content="这是一个性能优化方案_$(date +%s)"
+    store_memory "session1" "/test" "context" "$unique_content" "中文内容搜索摘要" "技术" ""
+
+    local result=$(retrieve_memories "/test" "性能" "" 10)
+    assert_contains "$result" "中文内容搜索摘要" "中文查询应该能找到内容中的关键词"
+}
+
+it "中文查询应该能通过 fallback 找到标签"
+test_retrieve_fulltext_search_cjk_fallback_tags() {
+    local unique_content="标签回退测试内容_$(date +%s)"
+    store_memory "session1" "/test" "context" "$unique_content" "中文标签搜索摘要" "中文标签,归档" ""
+
+    local result=$(retrieve_memories "/test" "归档" "" 10)
+    assert_contains "$result" "中文标签搜索摘要" "中文查询应该能找到标签中的关键词"
+}
+
+it "分阶段检索应该支持中文 fallback"
+test_retrieve_memories_staged_cjk_fallback() {
+    local unique_content="分阶段中文检索内容_$(date +%s)"
+    local unique_tag="中文分阶段归档_$(date +%s)"
+    store_memory "session1" "/test" "context" "$unique_content" "分阶段中文摘要" "$unique_tag" ""
+
+    local result=$(retrieve_memories_staged "/test" "$unique_tag" "" 10 1)
+    assert_contains "$result" "分阶段中文摘要" "分阶段检索应该能通过中文 fallback 找到结果"
+}
+
+it "分阶段检索的 min_results 应该按真实数据行计数"
+test_retrieve_memories_staged_counts_only_data_rows() {
+    local project="/stage-count"
+    store_memory "session1" "$project" "decision" "阶段计数内容 A" "阶段计数摘要 A" "" ""
+    store_memory "session2" "$project" "context" "阶段计数内容 B" "阶段计数摘要 B" "" ""
+
+    local result=$(retrieve_memories_staged "$project" "" "decision" 10 2)
+    assert_contains "$result" "阶段计数摘要 A" "应该保留精确匹配结果"
+    assert_contains "$result" "阶段计数摘要 B" "结果不足时应该继续放宽到项目级检索"
+}
+
+it "全文检索空结果时应该返回空"
+test_retrieve_fulltext_search_empty() {
+    # 搜索不存在的关键词
+    local result=$(retrieve_memories "/test/nonexistent" "XYZ123NONEXISTENT" "" 10)
+    # 结果应该只有表头，不包含任何 mem_ 开头的记录
+    local mem_count=0
+    if [ -n "$result" ]; then
+        mem_count=$(echo "$result" | grep "^mem_" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    assert_equals "0" "$mem_count" "搜索不存在的关键词应该返回空结果"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -427,8 +500,15 @@ test_no_duplicate_for_different_content
 
 # 检索测试
 test_retrieve_by_project
+test_retrieve_by_project_with_quote
 test_retrieve_by_category
 test_retrieve_fulltext_search
+test_retrieve_fulltext_search_mixed
+test_retrieve_fulltext_search_cjk_fallback_content
+test_retrieve_fulltext_search_cjk_fallback_tags
+test_retrieve_memories_staged_cjk_fallback
+test_retrieve_memories_staged_counts_only_data_rows
+test_retrieve_fulltext_search_empty
 
 # 记忆历史测试
 test_history_create_event

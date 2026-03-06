@@ -125,14 +125,12 @@ generate_session_summary() {
 
     # 如果有操作日志，添加操作统计
     if [ -n "$operation_log" ]; then
-        local edit_count=$(echo "$operation_log" | grep -c '\[EDIT\]' 2>/dev/null || echo "0")
-        local write_count=$(echo "$operation_log" | grep -c '\[WRITE\]' 2>/dev/null || echo "0")
+        local file_change_count=$(echo "$operation_log" | grep -c '\[FILE_CHANGE\]' 2>/dev/null || echo "0")
         local bash_count=$(echo "$operation_log" | grep -c '\[BASH\]' 2>/dev/null || echo "0")
 
-        if [ "$edit_count" -gt 0 ] || [ "$write_count" -gt 0 ] || [ "$bash_count" -gt 0 ]; then
+        if [ "$file_change_count" -gt 0 ] || [ "$bash_count" -gt 0 ]; then
             local stats="操作统计: "
-            [ "$edit_count" -gt 0 ] && stats="${stats}Edit=${edit_count} "
-            [ "$write_count" -gt 0 ] && stats="${stats}Write=${write_count} "
+            [ "$file_change_count" -gt 0 ] && stats="${stats}Files=${file_change_count} "
             [ "$bash_count" -gt 0 ] && stats="${stats}Bash=${bash_count} "
 
             if [ -n "$summary" ]; then

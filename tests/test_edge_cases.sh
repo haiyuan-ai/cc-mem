@@ -25,9 +25,22 @@ describe "空值处理"
 
 it "应该处理空内容"
 test_empty_content() {
+    local before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
     local result=$(store_memory "session1" "/test" "context" "" "" "" "")
-    # 空内容应该被拒绝或存储（取决于实现）
-    assert_true "[[ \"$result\" == *\"mem_\"* ]]" "应该返回 ID 或错误"
+    local after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+
+    assert_equals "error:content cannot be empty" "$result" "空内容应该返回明确错误"
+    assert_equals "$before_count" "$after_count" "空内容不应该写入数据库"
+}
+
+it "应该拒绝纯空白内容"
+test_whitespace_only_content() {
+    local before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local result=$(store_memory "session1" "/test" "context" "   " "" "" "")
+    local after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+
+    assert_equals "error:content cannot be empty" "$result" "纯空白内容应该返回明确错误"
+    assert_equals "$before_count" "$after_count" "纯空白内容不应该写入数据库"
 }
 
 it "应该处理空会话 ID"
@@ -44,9 +57,15 @@ test_empty_project_path() {
 
 it "应该处理空类别"
 test_empty_category() {
-    local id=$(store_memory "session1" "/test" "" "内容" "摘要" "" "")
-    # 空类别应该使用默认值或拒绝
-    assert_true "[[ \"$id\" == *\"mem_\"* || \"$id\" == *\"CHECK\"* ]]" "应该处理或拒绝"
+    local id
+    id=$(store_memory "session1" "/test" "" "内容" "摘要" "" "" 2>/dev/null)
+    # 空类别现在应该返回 error（CHECK constraint failed）
+    if [[ "$id" == error:* ]]; then
+        assert_true "true" "空类别应该被拒绝并返回错误"
+    else
+        # 如果没有返回 error，可能是数据库没有启用 CHECK 约束（旧版本 SQLite）
+        assert_contains "$id" "mem_" "应该生成记忆 ID（或返回 error）"
+    fi
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -246,9 +265,9 @@ describe "错误恢复"
 it "应该处理数据库锁定"
 test_database_lock() {
     # 尝试在事务中存储（模拟锁定）
-    sqlite3 "$TEST_DB" "BEGIN TRANSACTION;"
+    sqlite3 "$TEST_DB" "BEGIN TRANSACTION;" > /dev/null 2>&1
     local id=$(store_memory "session1" "/test" "context" "内容" "摘要" "" "")
-    sqlite3 "$TEST_DB" "ROLLBACK;"
+    sqlite3 "$TEST_DB" "ROLLBACK;" > /dev/null 2>&1
 
     # 应该能够处理或返回错误
     assert_true "[[ \"$id\" == *\"mem_\"* || \"$id\" == *\"locked\"* || \"$id\" == duplicate:* ]]" "应该处理数据库锁定"
@@ -365,6 +384,7 @@ run_tests "边界条件测试"
 
 # 空值处理测试
 test_empty_content
+test_whitespace_only_content
 test_empty_session_id
 test_empty_project_path
 test_empty_category

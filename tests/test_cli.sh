@@ -95,6 +95,32 @@ test_capture_filters_private() {
     assert_contains "$result" "已过滤" "应该提示已过滤私有内容"
 }
 
+it "应该拒绝纯空白内容"
+test_capture_rejects_whitespace_only() {
+    local before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local result
+    result=$(printf "   " | "$CLI" capture -c "context" 2>&1)
+    local status=$?
+    local after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+
+    assert_equals "1" "$status" "纯空白内容应该返回非 0"
+    assert_contains "$result" "content cannot be empty" "应该提示空内容错误"
+    assert_equals "$before_count" "$after_count" "纯空白内容不应该写入数据库"
+}
+
+it "store 命令遇到无效类别时应该返回错误"
+test_store_rejects_invalid_category() {
+    local before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local result
+    result=$(echo "store invalid category" | "$CLI" store -c "invalid_category" 2>&1)
+    local status=$?
+    local after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+
+    assert_equals "1" "$status" "无效类别应该返回非 0"
+    assert_contains "$result" "存储记忆失败" "应该提示存储失败"
+    assert_equals "$before_count" "$after_count" "无效类别不应该写入数据库"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：search 命令
 # ═══════════════════════════════════════════════════════════
@@ -108,6 +134,7 @@ test_search_memories() {
 
     local result=$("$CLI" search -q "ABC" 2>&1)
     assert_contains "$result" "搜索记忆" "应该显示搜索信息"
+    assert_contains "$result" "中文回退：未使用" "英文搜索不应该使用中文回退"
     assert_contains "$result" "ABC" "应该找到包含 ABC 的记忆"
 }
 
@@ -117,6 +144,16 @@ test_search_shows_params() {
     assert_contains "$result" "项目路径" "应该显示项目路径"
     assert_contains "$result" "关键词" "应该显示关键词"
     assert_contains "$result" "类别" "应该显示类别"
+}
+
+it "应该支持中文搜索 fallback"
+test_search_memories_cjk_fallback() {
+    echo "这是一个中文归档示例" | "$CLI" capture -c "context" -t "中文归档" > /dev/null 2>&1
+
+    local result=$("$CLI" search -q "归档" 2>&1)
+    assert_contains "$result" "搜索记忆" "中文搜索应该显示搜索信息"
+    assert_contains "$result" "中文回退：已使用" "中文搜索应该标记已使用回退"
+    assert_contains "$result" "中文归档" "中文搜索应该返回相关结果"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -136,12 +173,13 @@ test_history_shows_recent() {
 
 it "应该显示事件类型"
 test_history_shows_event_type() {
-    # 先创建一条记忆以产生历史记录
-    echo "历史事件测试 XYZ123" | "$CLI" capture -c "context" -t "test" > /dev/null 2>&1
+    local capture_result
+    capture_result=$(echo "历史事件测试 XYZ123" | "$CLI" capture -c "context" -t "test" 2>&1)
+    local memory_id=$(echo "$capture_result" | sed -n 's/.*记忆 ID: \(mem_[a-z0-9_]*\).*/\1/p' | tail -1)
 
-    # 直接查询测试数据库验证（因为 CLI 使用的是全局数据库而非测试数据库）
-    local result=$(sqlite3 "$TEST_DB" "SELECT event_type FROM memory_history WHERE new_value LIKE '%历史事件测试%' ORDER BY timestamp DESC LIMIT 1;")
-    assert_equals "create" "$result" "应该显示 create 事件"
+    local result=$("$CLI" history -m "$memory_id" -l 5 2>&1)
+    assert_contains "$result" "event_type" "应该显示事件类型列"
+    assert_contains "$result" "create" "应该显示 create 事件"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -164,6 +202,16 @@ test_list_limit() {
     # 计算行数（减去标题行）
     local line_count=$(echo "$result" | wc -l)
     assert_true "[ $line_count -le 5 ]" "返回行数应该不超过限制 + 标题"
+}
+
+it "list 命令应该支持包含单引号的项目路径"
+test_list_with_quoted_project_path() {
+    local quoted_project="/tmp/O'Brien"
+    echo "quoted project list" | "$CLI" capture -p "$quoted_project" -c "context" -t "quoted" > /dev/null 2>&1
+
+    local result=$("$CLI" list -p "$quoted_project" -l 5 2>&1)
+    assert_contains "$result" "$quoted_project" "应该返回带单引号的项目路径"
+    assert_contains "$result" "quoted project list" "应该返回对应项目的记忆"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -244,10 +292,13 @@ test_capture_memory
 test_capture_auto_detect_concepts
 test_capture_detects_duplicate
 test_capture_filters_private
+test_capture_rejects_whitespace_only
+test_store_rejects_invalid_category
 
 # search 命令测试
 test_search_memories
 test_search_shows_params
+test_search_memories_cjk_fallback
 
 # history 命令测试
 test_history_shows_recent
@@ -256,6 +307,7 @@ test_history_shows_event_type
 # list 命令测试
 test_list_memories
 test_list_limit
+test_list_with_quoted_project_path
 
 # export 命令测试
 test_export_to_directory

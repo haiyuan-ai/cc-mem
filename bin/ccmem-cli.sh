@@ -141,9 +141,12 @@ cmd_capture() {
 
             local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts")
 
-            # 检查是否重复
+            # 检查是否重复或错误
             if [[ "$id" == duplicate:* ]]; then
                 echo "  跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
+            elif [[ "$id" == error:* ]]; then
+                echo "  错误：存储记忆失败 - ${id#error:}"
+                return 1
             else
                 if [ -n "$private_warning" ]; then
                     echo "$private_warning"
@@ -196,7 +199,14 @@ cmd_store() {
     fi
 
     local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags")
-    echo "记忆已存储：$id"
+    if [[ "$id" == duplicate:* ]]; then
+        echo "跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
+    elif [[ "$id" == error:* ]]; then
+        echo "错误：存储记忆失败 - ${id#error:}"
+        return 1
+    else
+        echo "记忆已存储：$id"
+    fi
 }
 
 # 语义压缩
@@ -292,13 +302,29 @@ cmd_search() {
     echo ""
 
     # 使用分阶段检索（带充分性检查）
-    retrieve_memories_staged "$project_path" "$query" "$category" "$limit" "$min_results"
+    local tmp_results
+    tmp_results=$(mktemp "${TMPDIR:-/tmp}/ccmem-search.XXXXXX")
+    retrieve_memories_staged "$project_path" "$query" "$category" "$limit" "$min_results" > "$tmp_results"
+    local results
+    results=$(cat "$tmp_results")
+    rm -f "$tmp_results"
+
+    if [ -n "$query" ]; then
+        if contains_cjk "$query" && [ "${RETRIEVE_CJK_FALLBACK_USED:-0}" -eq 1 ]; then
+            echo "  中文回退：已使用"
+        else
+            echo "  中文回退：未使用"
+        fi
+        echo ""
+    fi
+    echo "$results"
 }
 
 # 列出最近的记忆
 cmd_list() {
     local limit=20
     local project_path=""
+    local project_path_escaped=""
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -312,7 +338,8 @@ cmd_list() {
 
     local where_clause="WHERE 1=1"
     if [ -n "$project_path" ]; then
-        where_clause="WHERE project_path = '$project_path'"
+        project_path_escaped=$(sql_escape "$project_path")
+        where_clause="WHERE project_path = '$project_path_escaped'"
     fi
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF

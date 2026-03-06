@@ -2,6 +2,9 @@
 # CC-Mem 测试框架
 # 基于 bash 的单元测试框架，使用 Red/Green TDD 方式
 
+# 获取脚本目录（测试框架自身路径检测）
+TEST_FRAMEWORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,8 +31,8 @@ setup_test_db() {
     mkdir -p "$CCMEM_EXPORT_DIR"
     mkdir -p "$CCMEM_MARKDOWN_DIR"
 
-    # 加载 sqlite.sh 并初始化数据库
-    source "$SCRIPT_DIR/lib/sqlite.sh"
+    # 加载 sqlite.sh 并初始化数据库（使用测试框架自身路径）
+    source "$TEST_FRAMEWORK_DIR/../lib/sqlite.sh"
     init_db
 }
 

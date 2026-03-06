@@ -11,6 +11,26 @@ fi
 
 MEMORY_DB="${MEMORY_DB:-$HOME/.claude/cc-mem/memory.db}"
 
+# 转义 SQL 字符串中的单引号。
+sql_escape() {
+    local value="$1"
+    printf "%s" "$value" | sed "s/'/''/g"
+}
+
+# 检测查询中是否包含 CJK 字符，用于决定是否启用 LIKE 回退。
+contains_cjk() {
+    local value="$1"
+    [[ "$value" =~ [一-龥] ]]
+}
+
+# 统计带表头的 sqlite 输出中实际数据行数量。
+count_result_rows() {
+    local results="$1"
+    echo "$results" | grep '^mem_' 2>/dev/null | wc -l | tr -d ' '
+}
+
+RETRIEVE_CJK_FALLBACK_USED=0
+
 # 初始化数据库
 init_db() {
     sqlite3 "$MEMORY_DB" <<EOF
@@ -89,6 +109,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     content_rowid='rowid'
 );
 
+-- 重建 FTS 索引（确保已有数据被索引）
+INSERT INTO memories_fts(memories_fts) VALUES('rebuild');
+
 -- 创建触发器同步 FTS
 DROP TRIGGER IF EXISTS memories_ai;
 CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
@@ -124,10 +147,26 @@ store_memory() {
     local tags="$6"
     local concepts="$7"
 
+    # 拒绝空内容和纯空白内容，避免写入无效记忆。
+    if [ -z "$(echo "$content" | tr -d '[:space:]')" ]; then
+        echo "error:content cannot be empty"
+        return 1
+    fi
+
     local id=$(generate_id)
     local epoch=$(generate_epoch_timestamp)
     local content_preview="${content:0:200}"
     local content_hash=$(generate_content_hash "$content" "$category")
+    local id_escaped
+    local session_id_escaped
+    local project_path_escaped
+    local category_escaped
+    local content_escaped
+    local content_preview_escaped
+    local summary_escaped
+    local tags_escaped
+    local concepts_escaped
+    local content_hash_escaped
 
     # 检查是否重复
     local existing_id=$(check_duplicate_memory "$content_hash")
@@ -136,15 +175,27 @@ store_memory() {
         return
     fi
 
-    # 转义单引号
-    content="${content//\'/\'\'}"
-    content_preview="${content_preview//\'/\'\'}"
-    summary="${summary//\'/\'\'}"
+    id_escaped=$(sql_escape "$id")
+    session_id_escaped=$(sql_escape "$session_id")
+    project_path_escaped=$(sql_escape "$project_path")
+    category_escaped=$(sql_escape "$category")
+    content_escaped=$(sql_escape "$content")
+    content_preview_escaped=$(sql_escape "$content_preview")
+    summary_escaped=$(sql_escape "$summary")
+    tags_escaped=$(sql_escape "$tags")
+    concepts_escaped=$(sql_escape "$concepts")
+    content_hash_escaped=$(sql_escape "$content_hash")
 
     sqlite3 "$MEMORY_DB" <<EOF
 INSERT INTO memories (id, session_id, project_path, category, content, content_preview, summary, tags, concepts, timestamp_epoch, content_hash)
-VALUES ('$id', '$session_id', '$project_path', '$category', '$content', '$content_preview', '$summary', '$tags', '$concepts', $epoch, '$content_hash');
+VALUES ('$id_escaped', '$session_id_escaped', '$project_path_escaped', '$category_escaped', '$content_escaped', '$content_preview_escaped', '$summary_escaped', '$tags_escaped', '$concepts_escaped', $epoch, '$content_hash_escaped');
 EOF
+    local exit_code=$?
+
+    if [ $exit_code -ne 0 ]; then
+        echo "error:INSERT failed with exit code $exit_code"
+        return 1
+    fi
 
     # 记录历史
     log_memory_event "$id" "create" "" "$content" "$session_id"
@@ -161,25 +212,43 @@ retrieve_memories() {
     local min_results="${5:-3}"  # 最小结果数，用于充分性检查
 
     local where_clause="WHERE 1=1"
+    local project_path_escaped=""
+    local category_escaped=""
 
     if [ -n "$project_path" ]; then
-        where_clause="$where_clause AND (project_path = '$project_path' OR project_path LIKE '$project_path/%')"
+        project_path_escaped=$(sql_escape "$project_path")
     fi
 
     if [ -n "$category" ]; then
-        where_clause="$where_clause AND category = '$category'"
+        category_escaped=$(sql_escape "$category")
+    fi
+
+    if [ -n "$project_path" ]; then
+        where_clause="$where_clause AND (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')"
+    fi
+
+    if [ -n "$category" ]; then
+        where_clause="$where_clause AND category = '$category_escaped'"
     fi
 
     if [ -n "$query" ]; then
-        # 使用全文检索
-        where_clause="$where_clause AND id IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query')"
+        local query_escaped
+        query_escaped=$(sql_escape "$query")
+
+        if contains_cjk "$query"; then
+            # CJK 查询：先走 FTS，同时允许 LIKE 回退。
+            where_clause="$where_clause AND (rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped') OR (content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%'))"
+        else
+            # 非 CJK 查询：使用全文检索 (注意：必须使用 rowid 而不是 id)
+            where_clause="$where_clause AND rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')"
+        fi
     fi
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, timestamp, category, summary, concepts, tags,
        CASE
-           WHEN project_path = '$project_path' THEN 3
-           WHEN project_path LIKE '$project_path/%' THEN 2
+           WHEN project_path = '$project_path_escaped' THEN 3
+           WHEN project_path LIKE '$project_path_escaped/%' THEN 2
            ELSE 1
        END as relevance
 FROM memories
@@ -201,18 +270,29 @@ retrieve_memories_staged() {
     local min_results="${5:-3}"
     local results=""
     local count=0
+    local project_path_escaped=""
+    local category_escaped=""
+    RETRIEVE_CJK_FALLBACK_USED=0
+
+    if [ -n "$project_path" ]; then
+        project_path_escaped=$(sql_escape "$project_path")
+    fi
+
+    if [ -n "$category" ]; then
+        category_escaped=$(sql_escape "$category")
+    fi
 
     # 阶段 1: 精确匹配（项目路径 + 类别）
     if [ -n "$project_path" ] && [ -n "$category" ]; then
         results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, timestamp, category, summary, concepts, tags
 FROM memories
-WHERE project_path = '$project_path' AND category = '$category'
+WHERE project_path = '$project_path_escaped' AND category = '$category_escaped'
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF
 )
-        count=$(echo "$results" | grep -c "^" 2>/dev/null || echo "0")
+        count=$(count_result_rows "$results")
         if [ "$count" -ge "$min_results" ]; then
             echo "$results"
             return
@@ -221,16 +301,46 @@ EOF
 
     # 阶段 2: 项目路径匹配 + 全文检索
     if [ -n "$query" ] && [ -n "$project_path" ]; then
-        results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+        local query_escaped
+        query_escaped=$(sql_escape "$query")
+
+        if contains_cjk "$query"; then
+            # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
+            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, timestamp, category, summary, concepts, tags
 FROM memories
-WHERE (project_path = '$project_path' OR project_path LIKE '$project_path/%')
-  AND id IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query')
+WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
+  AND rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF
 )
-        count=$(echo "$results" | grep -c "^" 2>/dev/null || echo "0")
+            count=$(count_result_rows "$results")
+            if [ "$count" -lt "$min_results" ]; then
+                RETRIEVE_CJK_FALLBACK_USED=1
+                results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, concepts, tags
+FROM memories
+WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
+  AND (rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+       OR content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%')
+ORDER BY timestamp_epoch DESC
+LIMIT $limit;
+EOF
+)
+            fi
+        else
+            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, concepts, tags
+FROM memories
+WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
+  AND rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+ORDER BY timestamp_epoch DESC
+LIMIT $limit;
+EOF
+)
+        fi
+        count=$(count_result_rows "$results")
         if [ "$count" -ge "$min_results" ]; then
             echo "$results"
             return
@@ -239,15 +349,43 @@ EOF
 
     # 阶段 3: 全文检索（不限项目）
     if [ -n "$query" ]; then
-        results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+        local query_escaped
+        query_escaped=$(sql_escape "$query")
+
+        if contains_cjk "$query"; then
+            # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
+            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, timestamp, category, summary, concepts, tags
 FROM memories
-WHERE id IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query')
+WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF
 )
-        count=$(echo "$results" | grep -c "^" 2>/dev/null || echo "0")
+            count=$(count_result_rows "$results")
+            if [ "$count" -lt "$min_results" ]; then
+                RETRIEVE_CJK_FALLBACK_USED=1
+                results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, concepts, tags
+FROM memories
+WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+   OR content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%'
+ORDER BY timestamp_epoch DESC
+LIMIT $limit;
+EOF
+)
+            fi
+        else
+            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, concepts, tags
+FROM memories
+WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+ORDER BY timestamp_epoch DESC
+LIMIT $limit;
+EOF
+)
+        fi
+        count=$(count_result_rows "$results")
         if [ "$count" -ge "$min_results" ]; then
             echo "$results"
             return
@@ -259,7 +397,7 @@ EOF
         results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, timestamp, category, summary, concepts, tags
 FROM memories
-WHERE project_path = '$project_path' OR project_path LIKE '$project_path/%'
+WHERE project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%'
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF
@@ -280,11 +418,13 @@ EOF
 # 获取单条记忆详情
 get_memory() {
     local memory_id="$1"
+    local memory_id_escaped
+    memory_id_escaped=$(sql_escape "$memory_id")
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, session_id, timestamp, project_path, category, content, summary, concepts, tags
 FROM memories
-WHERE id = '$memory_id';
+WHERE id = '$memory_id_escaped';
 EOF
 }
 
@@ -293,9 +433,11 @@ get_timeline() {
     local anchor_id="$1"
     local depth_before="${2:-3}"
     local depth_after="${3:-3}"
+    local anchor_id_escaped
+    anchor_id_escaped=$(sql_escape "$anchor_id")
 
     # 获取锚点记忆的 epoch 时间戳
-    local anchor_epoch=$(sqlite3 "$MEMORY_DB" "SELECT timestamp_epoch FROM memories WHERE id = '$anchor_id';")
+    local anchor_epoch=$(sqlite3 "$MEMORY_DB" "SELECT timestamp_epoch FROM memories WHERE id = '$anchor_id_escaped';")
 
     if [ -z "$anchor_epoch" ]; then
         echo "未找到记忆：$anchor_id"
@@ -318,10 +460,14 @@ EOF
 upsert_session() {
     local session_id="$1"
     local project_path="$2"
+    local session_id_escaped
+    local project_path_escaped
+    session_id_escaped=$(sql_escape "$session_id")
+    project_path_escaped=$(sql_escape "$project_path")
 
     sqlite3 "$MEMORY_DB" <<EOF
 INSERT OR REPLACE INTO sessions (id, project_path, start_time, status)
-VALUES ('$session_id', '$project_path', CURRENT_TIMESTAMP, 'active');
+VALUES ('$session_id_escaped', '$project_path_escaped', CURRENT_TIMESTAMP, 'active');
 EOF
 }
 
@@ -330,14 +476,18 @@ end_session() {
     local session_id="$1"
     local message_count="$2"
     local summary="$3"
+    local session_id_escaped
+    local summary_escaped
+    session_id_escaped=$(sql_escape "$session_id")
+    summary_escaped=$(sql_escape "$summary")
 
     sqlite3 "$MEMORY_DB" <<EOF
 UPDATE sessions
 SET end_time = CURRENT_TIMESTAMP,
     message_count = $message_count,
-    summary = '$summary',
+    summary = '$summary_escaped',
     status = 'completed'
-WHERE id = '$session_id';
+WHERE id = '$session_id_escaped';
 EOF
 }
 
@@ -346,10 +496,16 @@ update_project_access() {
     local project_path="$1"
     local name="$2"
     local tags="$3"
+    local project_path_escaped
+    local name_escaped
+    local tags_escaped
+    project_path_escaped=$(sql_escape "$project_path")
+    name_escaped=$(sql_escape "$name")
+    tags_escaped=$(sql_escape "$tags")
 
     sqlite3 "$MEMORY_DB" <<EOF
 INSERT OR REPLACE INTO projects (path, name, tags, last_accessed)
-VALUES ('$project_path', '$name', '$tags', CURRENT_TIMESTAMP);
+VALUES ('$project_path_escaped', '$name_escaped', '$tags_escaped', CURRENT_TIMESTAMP);
 EOF
 }
 
@@ -367,12 +523,14 @@ EOF
 export_to_markdown() {
     local output_dir="$1"
     local project_path="$2"
+    local project_path_escaped=""
 
     mkdir -p "$output_dir"
 
     local where_clause="WHERE 1=1"
     if [ -n "$project_path" ]; then
-        where_clause="$where_clause AND project_path = '$project_path'"
+        project_path_escaped=$(sql_escape "$project_path")
+        where_clause="$where_clause AND project_path = '$project_path_escaped'"
     fi
 
     # 只导出有效的记忆记录（id 以 mem_开头）
@@ -403,6 +561,8 @@ MDEOF
 generate_claude_md() {
     local project_path="$1"
     local output_file="$2"
+    local project_path_escaped
+    project_path_escaped=$(sql_escape "$project_path")
 
     if [ -z "$output_file" ]; then
         output_file="$project_path/CLAUDE.md"
@@ -412,7 +572,7 @@ generate_claude_md() {
     local memories=$(sqlite3 -separator '|' "$MEMORY_DB" "
         SELECT id, timestamp, category, content_preview, concepts, tags
         FROM memories
-        WHERE project_path = '$project_path' OR project_path LIKE '$project_path/%'
+        WHERE project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%'
         ORDER BY timestamp_epoch DESC
         LIMIT 20;
     ")
@@ -504,14 +664,23 @@ log_memory_event() {
     local session_id="${5:-$$}"
 
     local id=$(generate_id)
+    local id_escaped
+    local memory_id_escaped
+    local event_type_escaped
+    local old_value_escaped
+    local new_value_escaped
+    local session_id_escaped
 
-    # 转义单引号
-    old_value="${old_value//\'/\'\'}"
-    new_value="${new_value//\'/\'\'}"
+    id_escaped=$(sql_escape "$id")
+    memory_id_escaped=$(sql_escape "$memory_id")
+    event_type_escaped=$(sql_escape "$event_type")
+    old_value_escaped=$(sql_escape "$old_value")
+    new_value_escaped=$(sql_escape "$new_value")
+    session_id_escaped=$(sql_escape "$session_id")
 
     sqlite3 "$MEMORY_DB" <<EOF
 INSERT INTO memory_history (id, memory_id, event_type, old_value, new_value, session_id)
-VALUES ('$id', '$memory_id', '$event_type', '$old_value', '$new_value', '$session_id');
+VALUES ('$id_escaped', '$memory_id_escaped', '$event_type_escaped', '$old_value_escaped', '$new_value_escaped', '$session_id_escaped');
 EOF
 }
 
@@ -519,11 +688,13 @@ EOF
 get_memory_history() {
     local memory_id="$1"
     local limit="${2:-10}"
+    local memory_id_escaped
+    memory_id_escaped=$(sql_escape "$memory_id")
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
 SELECT id, memory_id, event_type, old_value, new_value, timestamp, session_id
 FROM memory_history
-WHERE memory_id = '$memory_id'
+WHERE memory_id = '$memory_id_escaped'
 ORDER BY timestamp DESC
 LIMIT $limit;
 EOF
@@ -536,7 +707,9 @@ get_recent_history() {
 
     local where_clause=""
     if [ -n "$project_path" ]; then
-        where_clause="WHERE m.project_path = '$project_path'"
+        local project_path_escaped
+        project_path_escaped=$(sql_escape "$project_path")
+        where_clause="WHERE m.project_path = '$project_path_escaped'"
     fi
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
@@ -604,13 +777,15 @@ generate_content_hash() {
 # 检查内容是否已存在（通过哈希）
 check_duplicate_memory() {
     local content_hash="$1"
+    local content_hash_escaped
 
     if [ -z "$content_hash" ]; then
         echo ""
         return
     fi
 
-    sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash' LIMIT 1;"
+    content_hash_escaped=$(sql_escape "$content_hash")
+    sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' LIMIT 1;"
 }
 
 # 生成唯一 ID（兼容 macOS 和 Linux）

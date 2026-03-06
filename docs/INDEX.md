@@ -27,7 +27,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [TEST-REPORT.md](../tests/TEST-REPORT.md) | 测试报告与覆盖总结（180 个测试 100% 通过） |
+| [TEST-REPORT.md](../tests/TEST-REPORT.md) | 测试报告与覆盖总结（135 个测试 100% 通过） |
 
 ---
 
@@ -47,7 +47,7 @@ cc-mem/
 │   ├── COMPATIBILITY.md      # 兼容性指南
 │   └── GIT-BASH-TEST.md      # Git Bash 测试（89 行精简版）
 ├── tests/
-│   ├── TEST-REPORT.md        # 测试报告（133 个用例）
+│   ├── TEST-REPORT.md        # 测试报告（135 个用例）
 │   ├── test_sqlite.sh        # SQLite 测试（66 个函数）
 │   ├── test_cli.sh           # CLI 测试（40 个函数）
 │   ├── test_edge_cases.sh    # 边界测试（56 个函数）

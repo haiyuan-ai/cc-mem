@@ -26,11 +26,15 @@ check_command() {
     local required="$2"
 
     if command -v "$cmd" &> /dev/null; then
-        local version=$("$cmd" --version 2>&1 | head -1 || echo "已安装")
-        echo "  ✅ $cmd: $version"
-        return 0
-    elif command -v "$cmd" &> /dev/null; then
-        local version=$("$cmd" -V 2>&1 | head -1 || echo "已安装")
+        # 尝试获取版本，处理 BSD/GNU 差异
+        local version=""
+        if "$cmd" --version &> /dev/null; then
+            version=$("$cmd" --version 2>&1 | head -1)
+        elif "$cmd" -V &> /dev/null; then
+            version=$("$cmd" -V 2>&1 | head -1)
+        else
+            version="已安装"
+        fi
         echo "  ✅ $cmd: $version"
         return 0
     else

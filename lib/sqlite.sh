@@ -589,8 +589,15 @@ generate_content_hash() {
     elif command -v shasum &> /dev/null; then
         echo "$hash_input" | shasum -a 256 | cut -c1-16
     else
-        # 回退到简单哈希
-        echo "$hash_input" | md5sum 2>/dev/null | cut -c1-16 || echo "${#hash_input}"
+        # 回退到 md5 (macOS) 或 md5sum (Linux)
+        if command -v md5 &> /dev/null; then
+            echo "$hash_input" | md5 | cut -c1-16
+        elif command -v md5sum &> /dev/null; then
+            echo "$hash_input" | md5sum | cut -c1-16
+        else
+            # 最终回退到简单哈希
+            echo "${#hash_input}"
+        fi
     fi
 }
 

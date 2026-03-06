@@ -50,7 +50,14 @@ if [ ! -f "$MARKETPLACES_FILE" ]; then
     echo '{}' > "$MARKETPLACES_FILE"
 fi
 
-TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+# 生成 ISO 8601 时间戳（兼容 macOS 和 Linux）
+if date --version 2>/dev/null | grep -q GNU; then
+    # Linux
+    TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+else
+    # macOS - %3N 不可用，使用秒级精度
+    TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fi
 
 if [ "$HAS_JQ" = true ]; then
     TMP_FILE=$(mktemp)

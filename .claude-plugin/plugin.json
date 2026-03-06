@@ -1,0 +1,12 @@
+{
+  "name": "cc-mem",
+  "version": "1.4.0",
+  "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，零额外依赖",
+  "author": {
+    "name": "haiyuan-ai"
+  },
+  "homepage": "https://github.com/haiyuan-ai/cc-mem",
+  "repository": "https://github.com/haiyuan-ai/cc-mem",
+  "license": "MIT",
+  "keywords": ["memory", "sqlite", "session-management", "context"]
+}

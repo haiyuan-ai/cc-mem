@@ -60,7 +60,19 @@ Claude Code 轻量级记忆管理系统
 
 详细的依赖要求和安装说明见 **[兼容性指南](docs/COMPATIBILITY.md)**。
 
-### 方法一：让 Claude Code 帮你安装（推荐）
+### 方法一：一键安装脚本（推荐）
+
+```bash
+curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install-plugin.sh | bash
+```
+
+安装完成后重启 Claude Code：
+```bash
+exit
+# 重新运行 claude
+```
+
+### 方法二：让 Claude Code 帮你安装
 
 直接告诉 Claude Code：
 
@@ -68,28 +80,14 @@ Claude Code 轻量级记忆管理系统
 安装 https://github.com/haiyuan-ai/cc-mem
 ```
 
-Claude Code 会自动完成：
-1. 克隆仓库到 `~/.claude/plugins/marketplaces/cc-mem`
-2. 注册 marketplace 到 `known_marketplaces.json`
-3. 安装插件到 `installed_plugins.json`
-4. 重启后会自动加载 hooks
+Claude Code 会自动完成安装配置。
 
-### 方法二：使用 `/plugin` 命令
-
-> ⚠️ **注意**：`/plugin install github:haiyuan-ai/cc-mem` **不能直接工作**，因为 Claude Code 需要 marketplace 先注册。
-
-如果你已经通过方式1或其他方式注册了 marketplace，可以使用：
-
-```bash
-/plugin install cc-mem@cc-mem
-```
-
-### 方法三：完全手动安装
+### 方法三：手动安装
 
 **步骤 1: 克隆仓库**
 
 ```bash
-git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplaces/cc-mem
+git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplaces/haiyuan-ai
 ```
 
 **步骤 2: 注册 Marketplace**
@@ -98,30 +96,30 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
 
 ```json
 {
-  "cc-mem": {
+  "haiyuan-ai": {
     "source": {
       "source": "github",
       "repo": "haiyuan-ai/cc-mem"
     },
-    "installLocation": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/cc-mem",
-    "lastUpdated": "2026-03-05T19:00:00.000Z"
+    "installLocation": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai",
+    "lastUpdated": "2026-03-06T00:00:00.000Z"
   }
 }
 ```
 
-**步骤 3: 安装插件**
+**步骤 3: 注册已安装插件**
 
 编辑 `~/.claude/plugins/installed_plugins.json`，在 `plugins` 对象中添加：
 
 ```json
-"cc-mem@cc-mem": [
+"cc-mem@haiyuan-ai": [
   {
     "scope": "user",
-    "installPath": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/cc-mem",
-    "version": "1.0.0",
-    "installedAt": "2026-03-05T12:00:00.000Z",
-    "lastUpdated": "2026-03-05T12:00:00.000Z",
-    "gitCommitSha": "3a703dc1e6c401a350374053cd4f004743aed54e"
+    "installPath": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai",
+    "version": "1.4.0",
+    "installedAt": "2026-03-06T00:00:00.000Z",
+    "lastUpdated": "2026-03-06T00:00:00.000Z",
+    "gitCommitSha": "COMMIT_SHA_HERE"
   }
 ]
 ```
@@ -133,8 +131,6 @@ exit
 # 重新运行 claude
 ```
 
-> **注意**：cc-mem 使用标准 Claude Code 插件结构（`plugin/` 子目录），hooks 配置位于 `plugin/hooks/hooks.json`，安装后自动生效。
-
 ---
 
 ## 卸载
@@ -142,7 +138,7 @@ exit
 ### 方法一：使用 `/plugin` 命令（推荐）
 
 ```bash
-/plugin uninstall cc-mem@cc-mem
+/plugin uninstall cc-mem@haiyuan-ai
 ```
 
 然后重启 Claude Code 会话：
@@ -157,14 +153,14 @@ exit
 **步骤 1: 删除插件目录**
 
 ```bash
-rm -rf ~/.claude/plugins/marketplaces/cc-mem
+rm -rf ~/.claude/plugins/marketplaces/haiyuan-ai
 ```
 
 > **说明**：插件级别的 hooks 会自动移除，无需手动编辑配置文件。
 
 **步骤 2: 清理 Marketplace 注册（可选）**
 
-编辑 `~/.claude/plugins/known_marketplaces.json`，删除 `cc-mem` 条目。
+编辑 `~/.claude/plugins/known_marketplaces.json`，删除 `haiyuan-ai` 条目。
 
 **步骤 3: 删除数据库（可选）**
 

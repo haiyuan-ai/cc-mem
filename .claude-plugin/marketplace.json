@@ -1,18 +1,20 @@
 {
   "name": "haiyuan-ai",
+  "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现",
   "owner": {
     "name": "haiyuan-ai"
-  },
-  "metadata": {
-    "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现",
-    "homepage": "https://github.com/haiyuan-ai/cc-mem"
   },
   "plugins": [
     {
       "name": "cc-mem",
+      "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，零额外依赖",
       "version": "1.4.0",
+      "author": {
+        "name": "haiyuan-ai"
+      },
       "source": ".",
-      "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，零额外依赖"
+      "category": "productivity",
+      "homepage": "https://github.com/haiyuan-ai/cc-mem"
     }
   ]
 }

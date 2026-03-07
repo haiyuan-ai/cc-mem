@@ -3,6 +3,7 @@
 infer_memory_kind() {
     local source="$1"
     local category="$2"
+    local confidence="${3:-0}"
 
     case "$source" in
         manual)
@@ -11,8 +12,54 @@ infer_memory_kind() {
                 *) echo "working" ;;
             esac
             ;;
-        user_prompt_submit|stop_summary) echo "working" ;;
-        stop_final_response|post_tool_use|session_end) echo "temporary" ;;
+        user_prompt_submit|stop_summary)
+            case "$category" in
+                decision|pattern)
+                    if [ "$confidence" -ge 70 ]; then echo "durable"; else echo "working"; fi
+                    ;;
+                solution)
+                    if [ "$confidence" -ge 85 ]; then echo "durable"; else echo "working"; fi
+                    ;;
+                debug)
+                    echo "working"
+                    ;;
+                context)
+                    if [ "$confidence" -ge 80 ]; then echo "working"; else echo "temporary"; fi
+                    ;;
+                *)
+                    echo "working"
+                    ;;
+            esac
+            ;;
+        post_tool_use|session_end)
+            case "$category" in
+                decision|pattern)
+                    if [ "$confidence" -ge 85 ]; then echo "working"; else echo "temporary"; fi
+                    ;;
+                solution)
+                    if [ "$confidence" -ge 65 ]; then echo "working"; else echo "temporary"; fi
+                    ;;
+                debug)
+                    if [ "$confidence" -ge 90 ]; then echo "working"; else echo "temporary"; fi
+                    ;;
+                *)
+                    echo "temporary"
+                    ;;
+            esac
+            ;;
+        stop_final_response)
+            case "$category" in
+                decision|pattern)
+                    if [ "$confidence" -ge 85 ]; then echo "working"; else echo "temporary"; fi
+                    ;;
+                solution)
+                    if [ "$confidence" -ge 90 ]; then echo "working"; else echo "temporary"; fi
+                    ;;
+                *)
+                    echo "temporary"
+                    ;;
+            esac
+            ;;
         *) echo "working" ;;
     esac
 }
@@ -20,6 +67,7 @@ infer_memory_kind() {
 infer_auto_inject_policy() {
     local source="$1"
     local category="$2"
+    local confidence="${3:-0}"
 
     case "$source" in
         manual)
@@ -28,9 +76,51 @@ infer_auto_inject_policy() {
                 *) echo "conditional" ;;
             esac
             ;;
-        user_prompt_submit|stop_summary) echo "conditional" ;;
-        stop_final_response) echo "manual_only" ;;
-        post_tool_use|session_end) echo "never" ;;
+        user_prompt_submit|stop_summary)
+            case "$category" in
+                decision|pattern)
+                    if [ "$confidence" -ge 75 ]; then echo "always"; else echo "conditional"; fi
+                    ;;
+                solution)
+                    if [ "$confidence" -ge 90 ]; then echo "always"; else echo "conditional"; fi
+                    ;;
+                debug)
+                    echo "conditional"
+                    ;;
+                context)
+                    if [ "$confidence" -ge 80 ]; then echo "conditional"; else echo "never"; fi
+                    ;;
+                *)
+                    echo "conditional"
+                    ;;
+            esac
+            ;;
+        post_tool_use|session_end)
+            case "$category" in
+                decision|pattern)
+                    if [ "$confidence" -ge 85 ]; then echo "conditional"; else echo "never"; fi
+                    ;;
+                solution)
+                    if [ "$confidence" -ge 65 ]; then echo "conditional"; else echo "never"; fi
+                    ;;
+                debug)
+                    if [ "$confidence" -ge 90 ]; then echo "conditional"; else echo "never"; fi
+                    ;;
+                *)
+                    echo "never"
+                    ;;
+            esac
+            ;;
+        stop_final_response)
+            case "$category" in
+                decision|pattern|solution)
+                    if [ "$confidence" -ge 90 ]; then echo "conditional"; else echo "manual_only"; fi
+                    ;;
+                *)
+                    echo "manual_only"
+                    ;;
+            esac
+            ;;
         *) echo "conditional" ;;
     esac
 }

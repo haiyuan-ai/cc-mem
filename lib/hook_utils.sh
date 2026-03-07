@@ -2,6 +2,7 @@
 
 HOOK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HOOK_UTILS_DIR/classification.sh"
+source "$HOOK_UTILS_DIR/memory_policy.sh"
 
 hook_log() {
     local hook_name="$1"
@@ -114,4 +115,19 @@ hook_classify_memory() {
 
     hook_log "$hook_name" "CLASSIFICATION_SOURCE=rule CATEGORY=$category CONFIDENCE=$confidence REASON=$reason"
     printf "%s|%s|%s\n" "$category" "$confidence" "$reason"
+}
+
+hook_classification_policy() {
+    local hook_name="$1"
+    local source="$2"
+    local category="$3"
+    local confidence="$4"
+    local memory_kind=""
+    local inject_policy=""
+
+    memory_kind=$(infer_memory_kind "$source" "$category" "$confidence")
+    inject_policy=$(infer_auto_inject_policy "$source" "$category" "$confidence")
+
+    hook_log "$hook_name" "MEMORY_KIND=$memory_kind AUTO_INJECT_POLICY=$inject_policy"
+    printf "%s|%s\n" "$memory_kind" "$inject_policy"
 }

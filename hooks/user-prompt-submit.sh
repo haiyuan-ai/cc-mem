@@ -40,6 +40,10 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     classification_result=""
     classification_result=$(hook_classify_memory "user-prompt-submit" "user_prompt_submit" "" "$CONTENT" "auto-captured" "what-changed")
     CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
+    CLASSIFICATION_CONFIDENCE=$(printf "%s\n" "$classification_result" | cut -d'|' -f2)
+    policy_result=$(hook_classification_policy "user-prompt-submit" "user_prompt_submit" "$CATEGORY" "$CLASSIFICATION_CONFIDENCE")
+    MEMORY_KIND=$(printf "%s\n" "$policy_result" | cut -d'|' -f1)
+    AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
 
     # 标签提取
     TAGS="auto-captured"
@@ -51,6 +55,8 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         -s "$SESSION_ID" \
         -t "$TAGS" \
         --source "user_prompt_submit" \
+        --memory-kind "$MEMORY_KIND" \
+        --inject-policy "$AUTO_INJECT_POLICY" \
         >/dev/null 2>&1 || true
 
     # 清空日志

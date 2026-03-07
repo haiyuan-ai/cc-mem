@@ -172,6 +172,28 @@ test_classify_memory_confidence_and_reason() {
     assert_not_empty "$reason" "自动分类应返回非空原因"
 }
 
+it "高置信度 solution 应影响 memory_kind 和 inject policy"
+test_infer_policy_with_confidence() {
+    local memory_kind
+    local inject_policy
+    memory_kind=$(infer_memory_kind "session_end" "solution" 90)
+    inject_policy=$(infer_auto_inject_policy "session_end" "solution" 90)
+
+    assert_equals "working" "$memory_kind" "高置信度 session_end solution 应提升为 working"
+    assert_equals "conditional" "$inject_policy" "高置信度 session_end solution 应允许 conditional 注入"
+}
+
+it "低置信度 context 应保持低优先级"
+test_infer_policy_low_confidence_context() {
+    local memory_kind
+    local inject_policy
+    memory_kind=$(infer_memory_kind "user_prompt_submit" "context" 60)
+    inject_policy=$(infer_auto_inject_policy "user_prompt_submit" "context" 60)
+
+    assert_equals "temporary" "$memory_kind" "低置信度 context 应保持 temporary"
+    assert_equals "never" "$inject_policy" "低置信度 context 不应自动注入"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：记忆清理
 # ═══════════════════════════════════════════════════════════
@@ -853,6 +875,8 @@ test_classify_memory_solution
 test_classify_memory_debug
 test_classify_memory_pattern
 test_classify_memory_confidence_and_reason
+test_infer_policy_with_confidence
+test_infer_policy_low_confidence_context
 
 # 记忆清理测试
 test_cleanup_low_priority_memories

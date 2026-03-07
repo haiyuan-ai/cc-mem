@@ -174,6 +174,10 @@ EOF
         local classification_result=""
         classification_result=$(hook_classify_memory "stop" "stop_summary" "$session_summary" "$operation_log" "stop,auto-captured" "what-changed")
         CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
+        CLASSIFICATION_CONFIDENCE=$(printf "%s\n" "$classification_result" | cut -d'|' -f2)
+        policy_result=$(hook_classification_policy "stop" "stop_summary" "$CATEGORY" "$CLASSIFICATION_CONFIDENCE")
+        MEMORY_KIND=$(printf "%s\n" "$policy_result" | cut -d'|' -f1)
+        AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
 
         # 捕获记忆
         echo "$operation_log" | "$CLI" capture \
@@ -182,6 +186,8 @@ EOF
             -s "$SESSION_ID" \
             -t "stop,auto-captured" \
             --source "stop_summary" \
+            --memory-kind "$MEMORY_KIND" \
+            --inject-policy "$AUTO_INJECT_POLICY" \
             --concepts "what-changed" \
             2>/dev/null || true
 

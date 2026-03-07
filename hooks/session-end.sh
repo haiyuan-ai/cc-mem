@@ -54,6 +54,10 @@ if [ -f "$CLI" ]; then
             classification_result=""
             classification_result=$(hook_classify_memory "session-end" "session_end" "" "$CONTENT" "session-end,auto-captured" "what-changed")
             CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
+            CLASSIFICATION_CONFIDENCE=$(printf "%s\n" "$classification_result" | cut -d'|' -f2)
+            policy_result=$(hook_classification_policy "session-end" "session_end" "$CATEGORY" "$CLASSIFICATION_CONFIDENCE")
+            MEMORY_KIND=$(printf "%s\n" "$policy_result" | cut -d'|' -f1)
+            AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
 
             # 捕获记忆
             echo "$CONTENT" | "$CLI" capture \
@@ -62,6 +66,8 @@ if [ -f "$CLI" ]; then
                 -s "$SESSION_ID" \
                 -t "session-end,auto-captured" \
                 --source "session_end" \
+                --memory-kind "$MEMORY_KIND" \
+                --inject-policy "$AUTO_INJECT_POLICY" \
                 --concepts "what-changed" \
                 2>/dev/null || true
 

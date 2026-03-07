@@ -109,5 +109,7 @@ else
     echo "[session-end] $(date): CLI not found at $CLI" >> "$DEBUG_LOG"
 fi
 
+run_opportunistic_cleanup "session-end" 30 50 43200 || true
+
 echo "[CC-Mem] 会话已结束：$SESSION_ID"
 echo "[session-end] $(date): END" >> "$DEBUG_LOG"

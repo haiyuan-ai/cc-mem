@@ -311,6 +311,44 @@ test_inject_context_outputs_context() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：cleanup 命令
+# ═══════════════════════════════════════════════════════════
+
+describe "cleanup 命令"
+
+it "默认 cleanup 应只清理低优先级临时记忆"
+test_cleanup_safe_mode() {
+    store_memory "cleanup_safe_1" "/tmp/cleanup-safe" "context" "safe temporary old" "safe temporary old" "" "" "session_end" "temporary" "never" "/tmp/cleanup-safe" "2000-01-01 00:00:00" > /dev/null
+    store_memory "cleanup_safe_2" "/tmp/cleanup-safe" "context" "safe working old" "safe working old" "" "" "manual" "working" "conditional" "/tmp/cleanup-safe" "2000-01-01 00:00:00" > /dev/null
+
+    local result
+    result=$("$CLI" cleanup 2>&1)
+
+    local temporary_count
+    temporary_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='safe temporary old';")
+    local working_count
+    working_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='safe working old';")
+
+    assert_contains "$result" "safe" "默认 cleanup 应显示 safe 模式"
+    assert_equals "0" "$temporary_count" "默认 cleanup 应删除低优先级临时记忆"
+    assert_equals "1" "$working_count" "默认 cleanup 不应删除 working 记忆"
+}
+
+it "aggressive cleanup 应清理过期 working 记忆"
+test_cleanup_aggressive_mode() {
+    store_memory "cleanup_aggr_1" "/tmp/cleanup-aggr" "context" "aggressive working old" "aggressive working old" "" "" "manual" "working" "conditional" "/tmp/cleanup-aggr" "2000-01-01 00:00:00" > /dev/null
+
+    local result
+    result=$("$CLI" cleanup --aggressive 2>&1)
+
+    local working_count
+    working_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='aggressive working old';")
+
+    assert_contains "$result" "aggressive" "aggressive cleanup 应显示 aggressive 模式"
+    assert_equals "0" "$working_count" "aggressive cleanup 应删除过期 working 记忆"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 测试：错误处理
 # ═══════════════════════════════════════════════════════════
 
@@ -379,6 +417,10 @@ test_refresh_project_links_command
 
 # inject-context 命令测试
 test_inject_context_outputs_context
+
+# cleanup 命令测试
+test_cleanup_safe_mode
+test_cleanup_aggressive_mode
 
 # 错误处理测试
 test_unknown_command

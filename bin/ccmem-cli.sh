@@ -63,7 +63,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   link-projects     手动建立项目关联
   unlink-projects   删除项目关联
   refresh-project-links 刷新自动项目关联
-  cleanup           清理过期记忆
+  cleanup           清理过期记忆（默认安全模式）
   status            显示记忆库状态
   help              显示此帮助信息
 
@@ -375,17 +375,42 @@ cmd_export() {
 # 清理过期记忆
 cmd_cleanup() {
     local days=30
+    local mode="safe"
+    local limit=100
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
             -d|--days) days="$2"; shift ;;
-            -h|--help) show_help; return ;;
+            --aggressive) mode="aggressive" ;;
+            --limit) limit="$2"; shift ;;
+            -h|--help)
+                echo "用法：ccmem cleanup [-d days] [--limit count] [--aggressive]"
+                echo "默认执行安全清理，只删除低优先级临时记忆。"
+                echo ""
+                echo "选项："
+                echo "  -d, --days        超龄阈值天数（默认 30）"
+                echo "  --limit           单次最多删除条数（默认 100）"
+                echo "  --aggressive      扩大到所有已过期记忆和超龄 working 记忆"
+                return
+                ;;
             *) echo "未知选项：$1"; return 1 ;;
         esac
         shift
     done
 
-    cleanup_old_memories "$days"
+    local deleted_count
+    deleted_count=$(cleanup_memories "$mode" "$days" "$limit")
+
+    if [[ ! "$deleted_count" =~ ^[0-9]+$ ]]; then
+        echo "错误：清理失败 - $deleted_count"
+        return 1
+    fi
+
+    if [ "$mode" = "aggressive" ]; then
+        echo "已清理 $deleted_count 条过期/超龄记忆（aggressive，days=$days，limit=$limit）"
+    else
+        echo "已清理 $deleted_count 条低优先级临时记忆（safe，days=$days，limit=$limit）"
+    fi
 }
 
 # 列出所有项目

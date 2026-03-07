@@ -15,17 +15,21 @@ setup_hooks_test() {
     # 设置测试会话 ID
     export TEST_SESSION_ID="test_hooks_$$"
     export CLAUDE_SESSION_ID="$TEST_SESSION_ID"
+    export CCMEM_CLEANUP_STATE_FILE="/tmp/ccmem_cleanup_state_${TEST_SESSION_ID}"
 
     # 清理可能的旧日志
     rm -f "/tmp/ccmem_${TEST_SESSION_ID}.log"
+    rm -f "$CCMEM_CLEANUP_STATE_FILE"
 }
 
 cleanup_hooks_test() {
     # 清理测试日志
     rm -f "/tmp/ccmem_${TEST_SESSION_ID}.log"
     rm -f "/tmp/ccmem_debug.log"
+    rm -f "${CCMEM_CLEANUP_STATE_FILE:-}"
     unset CLAUDE_SESSION_ID
     unset TEST_SESSION_ID
+    unset CCMEM_CLEANUP_STATE_FILE
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -472,6 +476,54 @@ EOF
     cleanup_hooks_test
 }
 
+it "session-end 应该触发机会式清理"
+test_session_end_runs_opportunistic_cleanup() {
+    setup_hooks_test
+    rm -f /tmp/ccmem_debug.log
+
+    store_memory "cleanup_session_1" "/tmp/cleanup-project" "context" "低优先级旧记忆" "旧摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
+
+    local before_count
+    before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='旧摘要';")
+
+    local input="{\"session_id\": \"$TEST_SESSION_ID\"}"
+    echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+
+    local after_count
+    after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='旧摘要';")
+
+    assert_equals "1" "$before_count" "测试前应该存在待清理记忆"
+    assert_equals "0" "$after_count" "session-end 应该清理过期低优先级记忆"
+
+    local cleanup_log
+    cleanup_log=$(grep "\\[cleanup\\].*trigger=session-end" /tmp/ccmem_debug.log 2>/dev/null || true)
+    assert_contains "$cleanup_log" "deleted=" "debug log 应记录 session-end 清理结果"
+
+    cleanup_hooks_test
+}
+
+it "机会式清理应受节流限制"
+test_opportunistic_cleanup_throttled() {
+    setup_hooks_test
+    rm -f /tmp/ccmem_debug.log
+
+    date +%s > "$CCMEM_CLEANUP_STATE_FILE"
+    store_memory "cleanup_session_2" "/tmp/cleanup-project" "context" "节流测试记忆" "节流摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
+
+    local input="{\"session_id\": \"$TEST_SESSION_ID\"}"
+    echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+
+    local remaining_count
+    remaining_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='节流摘要';")
+    assert_equals "1" "$remaining_count" "节流时不应执行清理"
+
+    local cleanup_log
+    cleanup_log=$(grep "\\[cleanup\\].*skipped=throttle" /tmp/ccmem_debug.log 2>/dev/null || true)
+    assert_contains "$cleanup_log" "skipped=throttle" "debug log 应记录节流跳过"
+
+    cleanup_hooks_test
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：Hooks 配置
 # ═══════════════════════════════════════════════════════════
@@ -542,6 +594,8 @@ test_stop_condenses_long_final_response
 # 批量保存阈值测试
 test_batch_save_threshold
 test_session_end_condenses_long_log
+test_session_end_runs_opportunistic_cleanup
+test_opportunistic_cleanup_throttled
 
 # Hooks 配置测试
 test_hooks_config_exists

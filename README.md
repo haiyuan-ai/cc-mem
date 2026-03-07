@@ -386,12 +386,19 @@ ccmem-cli.sh unlink-projects "/repo/app" "/repo/lib-common"
 #### cleanup - 清理过期记忆
 
 ```bash
-# 清理 30 天前的记忆（默认）
+# 默认：安全清理，只删除低优先级临时记忆
 ccmem-cli.sh cleanup
 
-# 清理指定天数前的记忆
+# 指定超龄阈值
 ccmem-cli.sh cleanup -d 60
+
+# 激进模式：扩大到所有已过期记忆和超龄 working 记忆
+ccmem-cli.sh cleanup --aggressive
 ```
+
+补充说明：
+- 默认 `cleanup` 与 hook 自动清理共用同一套安全策略
+- `--aggressive` 仅用于手动维护，不会在 hooks 中自动触发
 
 ---
 
@@ -736,7 +743,7 @@ chmod +x ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/hooks/*.sh
 - 所有数据本地存储
 - 支持敏感内容过滤（如 `<private>` 标签）
 - 支持按项目隔离记忆（基于 `project_root`）
-- 支持清理过期数据（可手动执行 `cleanup` 命令）
+- 支持清理过期数据（可手动执行 `cleanup`，hooks 也会机会式安全清理低优先级过期记忆）
 
 ## 开发计划
 

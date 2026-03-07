@@ -124,6 +124,61 @@ test_project_links_manual_should_override_auto() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：记忆清理
+# ═══════════════════════════════════════════════════════════
+
+describe "记忆清理"
+
+it "safe cleanup 应只删除低优先级临时记忆"
+test_cleanup_low_priority_memories() {
+    store_memory "cleanup_sqlite_1" "/tmp/sqlite-cleanup" "context" "temporary cleanup content" "temporary cleanup summary" "" "" "session_end" "temporary" "never" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+    store_memory "cleanup_sqlite_2" "/tmp/sqlite-cleanup" "context" "working cleanup content" "working cleanup summary" "" "" "manual" "working" "conditional" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+
+    local deleted_count
+    deleted_count=$(cleanup_low_priority_memories 30 100)
+    local temp_count
+    temp_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='temporary cleanup summary';")
+    local working_count
+    working_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='working cleanup summary';")
+
+    assert_equals "1" "$deleted_count" "safe cleanup 应只删除 1 条低优先级临时记忆"
+    assert_equals "0" "$temp_count" "低优先级临时记忆应被删除"
+    assert_equals "1" "$working_count" "working 记忆不应被 safe cleanup 删除"
+}
+
+it "aggressive cleanup 应删除过期 working 记忆"
+test_cleanup_aggressive_memories_mode() {
+    store_memory "cleanup_sqlite_3" "/tmp/sqlite-cleanup" "context" "aggressive temporary content" "aggressive temporary summary" "" "" "session_end" "temporary" "never" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+    store_memory "cleanup_sqlite_4" "/tmp/sqlite-cleanup" "context" "aggressive working content" "aggressive working summary" "" "" "manual" "working" "conditional" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+    store_memory "cleanup_sqlite_5" "/tmp/sqlite-cleanup" "decision" "durable content" "durable summary" "" "" "manual" "durable" "always" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+
+    local deleted_count
+    deleted_count=$(cleanup_aggressive_memories 30 100)
+    local working_count
+    working_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='aggressive working summary';")
+    local durable_count
+    durable_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='durable summary';")
+
+    assert_true "[ $deleted_count -ge 2 ]" "aggressive cleanup 应至少删除 temporary 和 working 记忆"
+    assert_equals "0" "$working_count" "aggressive cleanup 应删除过期 working 记忆"
+    assert_equals "1" "$durable_count" "durable 记忆不应被 aggressive cleanup 删除"
+}
+
+it "cleanup 应遵守 limit 参数"
+test_cleanup_respects_limit() {
+    store_memory "cleanup_limit_1" "/tmp/sqlite-cleanup" "context" "limit content 1" "limit summary 1" "" "" "session_end" "temporary" "never" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+    store_memory "cleanup_limit_2" "/tmp/sqlite-cleanup" "context" "limit content 2" "limit summary 2" "" "" "session_end" "temporary" "never" "/tmp/sqlite-cleanup" "2000-01-01 00:00:00" > /dev/null
+
+    local deleted_count
+    deleted_count=$(cleanup_low_priority_memories 30 1)
+    local remaining_count
+    remaining_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary IN ('limit summary 1', 'limit summary 2');")
+
+    assert_equals "1" "$deleted_count" "cleanup 应只删除 limit 指定的条数"
+    assert_equals "1" "$remaining_count" "剩余记录数应与 limit 对应"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 测试：内容哈希
 # ═══════════════════════════════════════════════════════════
 
@@ -742,6 +797,11 @@ test_generate_id_contains_timestamp
 test_project_links_upsert_and_list
 test_project_links_delete
 test_project_links_manual_should_override_auto
+
+# 记忆清理测试
+test_cleanup_low_priority_memories
+test_cleanup_aggressive_memories_mode
+test_cleanup_respects_limit
 
 # 内容哈希测试
 test_content_hash_length

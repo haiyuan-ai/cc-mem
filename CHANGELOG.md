@@ -2,6 +2,13 @@
 
 ## [1.5.1] - 2026-03-07
 
+### 🧹 Cleanup Strategy Upgrade
+
+- `cleanup` 命令改为默认安全模式，只清理低优先级临时记忆
+- 新增 `cleanup --aggressive`，可手动扩大到所有已过期记忆和超龄 working 记忆
+- `stop` / `session-end` 新增机会式自动清理，采用限频 + 小批量删除策略
+- 自动清理基于 `memory_kind`、`auto_inject_policy` 和 `expires_at`，不再使用粗粒度全量清理
+
 ### ✨ Cross-Project Memory Linking
 
 - 新增 `project_links` 表，用于存储受控跨项目关联
@@ -11,6 +18,8 @@
 
 ### 🧪 Testing
 
+- 新增 safe/aggressive cleanup 测试
+- 新增 hook 自动清理与节流测试
 - 新增 `project_links` 数据层测试
 - 新增项目关联 CLI 测试
 - 原有 related project 注入 / recall / worktree 回归测试继续通过

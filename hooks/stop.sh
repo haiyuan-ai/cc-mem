@@ -250,6 +250,8 @@ EOF
         echo "[stop] $(date): Saved final assistant message as memory" >> "$DEBUG_LOG"
     fi
 
+    run_opportunistic_cleanup "stop" 30 50 43200 || true
+
     echo "[CC-Mem] 会话已停止：$SESSION_ID"
     echo "[stop] $(date): END" >> "$DEBUG_LOG"
 }

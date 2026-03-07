@@ -27,6 +27,11 @@
   - 开场上下文注入
   - query-aware recall
   - 工具执行后的高价值记忆捕获
+- 当前定位为实验性扩展，不影响主 Bash/SQLite 运行时稳定性
+- 扩展侧增加：
+  - session 级 `inject-context` 去重
+  - fail-open MCP 调用
+  - tool 输出本地降噪与裁剪
 - 保持主 Bash/SQLite 运行时不引入额外 Node 依赖
 
 ### 🧪 Testing

@@ -7,19 +7,30 @@ provides three behaviors:
 - query-aware recall via `ccmem_recall`
 - tool-result capture via `ccmem_capture`
 
+## Experimental status
+
+This extension is currently experimental.
+
+It is intended to get OpenCode closer to the Claude Code memory experience, but
+it is not yet a production-stable integration layer.
+
 ## Current scope
 
 The current extension is intentionally minimal:
 
-- `experimental.chat.system.transform` appends `cc-mem` project context
+- `experimental.chat.system.transform` appends `cc-mem` project context once
+  per session
 - `chat.message` appends recall context for user text messages
-- `tool.execute.after` captures high-signal tool output
+- `tool.execute.after` captures high-signal tool output with local denoising
+  and truncation
+- MCP calls fail open, so memory issues do not block the main OpenCode flow
 
 It does not yet implement:
 
 - session compaction capture
 - tool-specific structured capture rules
 - batching or deduplicated capture queues
+- host-managed MCP tool invocation from the OpenCode plugin layer
 
 ## Requirements
 
@@ -28,7 +39,7 @@ It does not yet implement:
 - a working `cc-mem` database at the default location or via `MEMORY_DB`
 - local extension dependencies installed via `bun install` or `npm install`
 
-The extension talks directly to:
+The extension currently talks directly to:
 
 - `mcp/server.py`
 

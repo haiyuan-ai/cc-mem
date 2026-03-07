@@ -402,7 +402,7 @@ args = ["/ABSOLUTE/PATH/TO/cc-mem/mcp/server.py"]
 
 这让其他 coding agent 也可以共享 `cc-mem` 的记忆保存、检索和注入能力。
 
-仓库内还提供了一个独立的 OpenCode 扩展骨架：
+仓库内还提供了一个独立的 OpenCode 实验性扩展：
 
 - `extensions/opencode/`
 

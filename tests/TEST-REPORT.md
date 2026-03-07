@@ -116,7 +116,7 @@
 | 跨项目关联 | ✅ | - | ✅ |
 | 注入与 recall | ✅ | - | ✅ |
 | MCP server | ✅ | - | ✅ |
-| OpenCode 扩展骨架 | - | - | ✅ |
+| OpenCode 实验性扩展 | - | - | ✅ |
 | 时间戳 epoch | ✅ | ✅ | ✅ |
 | 项目隔离 | ✅ | ✅ | ✅ |
 | get_memory/get_timeline | ✅ | - | ✅ |
@@ -158,7 +158,7 @@ mcp/
 **扩展**:
 ```
 extensions/
-└── opencode/               # OpenCode 扩展骨架
+└── opencode/               # OpenCode 实验性扩展
 ```
 
 **Hooks**:

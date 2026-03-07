@@ -74,7 +74,7 @@ cc-mem/
 ├── mcp/
 │   └── server.py             # 零依赖 stdio MCP server
 ├── extensions/
-│   └── opencode/             # OpenCode 扩展骨架（基于 cc-mem MCP）
+│   └── opencode/             # OpenCode 实验性扩展（基于 cc-mem MCP）
 ├── config/
 │   └── config.json           # 配置文件
 └── scripts/

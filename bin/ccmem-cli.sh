@@ -57,7 +57,6 @@ CC-Mem CLI - Claude Code 记忆管理工具
   history           查看记忆历史
   list              列出最近的记忆
   export            导出记忆到 Markdown
-  context           生成项目 CLAUDE.md 上下文
   inject-context    生成开场注入上下文
   projects          列出所有项目
   cleanup           清理过期记忆
@@ -70,8 +69,6 @@ CC-Mem CLI - Claude Code 记忆管理工具
   ccmem-cli.sh get mem_123 mem_456
   ccmem-cli.sh capture -c "decision" -t "important,core"
   ccmem-cli.sh export -o "~/exports"
-  ccmem-cli.sh context
-
 选项:
   -p, --project     项目路径
   -c, --category    记忆类别 (decision|solution|pattern|debug|context)
@@ -386,37 +383,6 @@ cmd_cleanup() {
     cleanup_old_memories "$days"
 }
 
-# 生成项目上下文
-cmd_context() {
-    local project_path=""
-    local output_file=""
-
-    while [[ "$#" -gt 0 ]]; do
-        case $1 in
-            -p|--project) project_path="$2"; shift ;;
-            -o|--output) output_file="$2"; shift ;;
-            -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
-        esac
-        shift
-    done
-
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
-
-    if [ -z "$output_file" ]; then
-        output_file="$project_path/CLAUDE.md"
-    fi
-
-    echo "生成项目上下文..."
-    echo "  项目路径：$project_path"
-    echo "  输出文件：$output_file"
-    echo ""
-
-    generate_claude_md "$project_path" "$output_file"
-}
-
 # 列出所有项目
 cmd_projects() {
     echo "=== 项目列表 ==="
@@ -638,9 +604,6 @@ main() {
             ;;
         export)
             cmd_export "$@"
-            ;;
-        context)
-            cmd_context "$@"
             ;;
         projects)
             cmd_projects

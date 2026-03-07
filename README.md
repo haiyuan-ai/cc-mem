@@ -39,7 +39,7 @@ Claude Code 轻量级记忆管理系统
 - **自动裁剪**：Stop / SessionEnd 会对超长回复和日志做本地裁剪
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
-- **Markdown 导出**：导出为标准 Markdown 文件（不需要 Obsidian）
+- **Markdown 导出**：导出为标准 Markdown 文件
 - **Hooks 集成**：SessionStart/PostToolUse/UserPromptSubmit/Stop/SessionEnd 自动注入和捕获
 - **记忆历史**：记录 create/update/delete 事件
 - **内容去重**：SHA256 哈希，自动检测重复内容
@@ -230,9 +230,6 @@ ccmem-cli.sh store -p "/path/to/project" -c "pattern" -t "tag" -m "摘要"
 # 导出记忆
 ccmem-cli.sh export -o "~/exports"
 
-# 生成项目上下文
-ccmem-cli.sh context
-
 # 生成开场注入上下文
 ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 
@@ -333,19 +330,6 @@ echo "记忆内容" | ccmem-cli.sh store -p "/path/to/project" -c "pattern" -t "
 # 交互模式（从 stdin 读取）
 ccmem-cli.sh store -p "/path/to/project" -c "context"
 # 然后输入内容，Ctrl+D 结束
-```
-
-#### context - 生成项目上下文
-
-```bash
-# 生成当前项目的 CLAUDE.md 上下文文件
-ccmem-cli.sh context
-
-# 指定项目路径
-ccmem-cli.sh context -p "/path/to/project"
-
-# 指定输出文件
-ccmem-cli.sh context -o "/path/to/CLAUDE.md"
 ```
 
 #### inject-context - 生成结构化开场上下文

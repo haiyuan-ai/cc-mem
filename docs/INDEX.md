@@ -47,7 +47,7 @@ cc-mem/
 │   ├── COMPATIBILITY.md      # 兼容性指南
 │   └── GIT-BASH-TEST.md      # Git Bash 测试（89 行精简版）
 ├── tests/
-│   ├── TEST-REPORT.md        # 测试报告（135 个用例）
+│   ├── TEST-REPORT.md        # 测试报告
 │   ├── test_sqlite.sh        # SQLite 测试
 │   ├── test_cli.sh           # CLI 测试
 │   ├── test_edge_cases.sh    # 边界测试

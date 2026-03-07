@@ -110,6 +110,22 @@ run_all_tests() {
         failed=$((failed + 1))
     fi
 
+    echo ""
+    echo ""
+
+    # 运行扩展 smoke test
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📋 扩展 Smoke Test"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if bash "$TESTS_DIR/test_extensions.sh"; then
+        echo ""
+        echo "✅ 扩展 smoke test 通过"
+    else
+        echo ""
+        echo "❌ 扩展 smoke test 失败"
+        failed=$((failed + 1))
+    fi
+
     return $failed
 }
 
@@ -137,10 +153,12 @@ main() {
         echo "               不指定则运行所有测试"
         echo ""
         echo "示例:"
-        echo "  $0                    # 运行所有测试（162+ 个用例）"
-        echo "  $0 tests/test_sqlite.sh  # 运行 SQLite 测试（66 个用例）"
-        echo "  $0 tests/test_cli.sh     # 运行 CLI 测试（40 个用例）"
-        echo "  $0 tests/test_hooks.sh   # 运行 Hooks 测试（新增）"
+        echo "  $0                         # 运行所有测试"
+        echo "  $0 tests/test_sqlite.sh    # 运行 SQLite 测试"
+        echo "  $0 tests/test_cli.sh       # 运行 CLI 测试"
+        echo "  $0 tests/test_hooks.sh     # 运行 Hooks 测试"
+        echo "  $0 tests/test_mcp.sh       # 运行 MCP 测试"
+        echo "  $0 tests/test_extensions.sh # 运行扩展 smoke test"
         exit 0
     fi
 

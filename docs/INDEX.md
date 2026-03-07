@@ -52,12 +52,17 @@ cc-mem/
 │   ├── test_cli.sh           # CLI 测试
 │   ├── test_edge_cases.sh    # 边界测试
 │   ├── test_hooks.sh         # Hooks 功能测试
+│   ├── test_extensions.sh    # 扩展 smoke test
 │   ├── test_framework.sh     # 测试框架（12 个函数）
 │   └── run_tests.sh          # 测试运行器
 ├── bin/
 │   └── ccmem-cli.sh          # CLI 工具
 ├── lib/
-│   ├── sqlite.sh             # SQLite 操作库
+│   ├── sqlite.sh             # SQLite 聚合入口
+│   ├── injection.sh          # 注入与 recall 逻辑
+│   ├── memory_policy.sh      # 分层与 cleanup 策略
+│   ├── classification.sh     # 规则自动分类
+│   ├── hook_utils.sh         # hooks 公共运行时
 │   └── content_utils.sh      # 概念识别与私有内容过滤
 ├── hooks/
 │   ├── hooks.json            # Hooks 配置（插件级别，自动加载）
@@ -68,10 +73,13 @@ cc-mem/
 │   └── user-prompt-submit.sh # UserPromptSubmit Hook (批量保存)
 ├── mcp/
 │   └── server.py             # 零依赖 stdio MCP server
+├── extensions/
+│   └── opencode/             # OpenCode 扩展骨架（基于 cc-mem MCP）
 ├── config/
 │   └── config.json           # 配置文件
 └── scripts/
     ├── check-compat.sh       # 兼容性检查脚本
+    ├── migrate-legacy-db.sh  # 一次性旧库迁移脚本
     ├── repair-fts.sh         # FTS 索引修复脚本
     └── test-git-bash.sh      # Git Bash 测试脚本
 ```

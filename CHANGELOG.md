@@ -21,14 +21,26 @@
 - 统一输出 `<cc-mem-recall>` 注入块
 - 让 CLI、MCP 和 hooks 三条链路共用同一套 recall 能力
 
+#### 3. 新增 OpenCode 扩展骨架
+- 新增 `extensions/opencode/`，作为仓库内独立扩展目录
+- 通过 `cc-mem` MCP 提供：
+  - 开场上下文注入
+  - query-aware recall
+  - 工具执行后的高价值记忆捕获
+- 保持主 Bash/SQLite 运行时不引入额外 Node 依赖
+
 ### 🧪 Testing
 
 - 新增 `tests/test_mcp.sh`
+- 新增 `tests/test_extensions.sh`
 - MCP smoke test 覆盖：
   - `initialize`
   - `tools/list`
   - `ccmem_capture`
   - `ccmem_recall`
+- 扩展 smoke test 覆盖：
+  - OpenCode 扩展目录结构
+  - 插件入口 hook 契约
 - CLI 新增 `recall` 命令回归测试
 
 ## [1.5.1] - 2026-03-07

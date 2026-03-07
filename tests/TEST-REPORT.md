@@ -14,6 +14,7 @@
 | **边界条件测试** | 持续更新 | ✅ 通过 |
 | **Hooks 功能测试** | 持续更新 | ✅ 通过 |
 | **MCP Server 测试** | 持续更新 | ✅ 通过 |
+| **扩展 Smoke Test** | 持续更新 | ✅ 通过 |
 | **总计** | 持续更新 | ✅ 通过 |
 
 ---
@@ -76,6 +77,13 @@
 | tools/list | 1 | ✅ |
 | capture + recall smoke test | 1 | ✅ |
 
+### 扩展 Smoke Test
+
+| 模块 | 测试用例 | 状态 |
+|------|---------|------|
+| OpenCode 扩展目录结构 | 8 | ✅ |
+| OpenCode 插件 hook 契约 | 8 | ✅ |
+
 ### Hooks 功能测试
 
 | 模块 | 测试用例 | 状态 |
@@ -108,6 +116,7 @@
 | 跨项目关联 | ✅ | - | ✅ |
 | 注入与 recall | ✅ | - | ✅ |
 | MCP server | ✅ | - | ✅ |
+| OpenCode 扩展骨架 | - | - | ✅ |
 | 时间戳 epoch | ✅ | ✅ | ✅ |
 | 项目隔离 | ✅ | ✅ | ✅ |
 | get_memory/get_timeline | ✅ | - | ✅ |
@@ -125,6 +134,7 @@ tests/
 ├── test_edge_cases.sh      # 边界条件测试
 ├── test_hooks.sh           # Hooks 功能测试
 ├── test_mcp.sh             # MCP Server 测试
+├── test_extensions.sh      # 扩展 smoke test
 ├── run_tests.sh            # 测试运行器
 └── TEST-REPORT.md          # 本文档
 ```
@@ -143,6 +153,12 @@ lib/
 ```
 mcp/
 └── server.py               # 零依赖 stdio MCP server
+```
+
+**扩展**:
+```
+extensions/
+└── opencode/               # OpenCode 扩展骨架
 ```
 
 **Hooks**:

@@ -1,0 +1,12 @@
+{
+  "name": "cc-mem-opencode-extension",
+  "version": "1.5.2",
+  "private": true,
+  "type": "module",
+  "exports": "./src/plugin.ts",
+  "description": "OpenCode extension for cc-mem MCP-based capture and injection",
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*",
+    "@opencode-ai/sdk": "*"
+  }
+}

@@ -31,6 +31,8 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.bak
+__pycache__/
+*.pyc
 
 # 发布检查清单（发布后删除）
 GITHUB_RELEASE.md

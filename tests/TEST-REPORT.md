@@ -204,16 +204,13 @@ store_memory "session1" "/test" "context" "测试内容" "摘要" "" ""
 store_memory "session1" "/test" "context" "测试_$(date +%s)" "摘要" "" ""
 ```
 
-### 2. 处理去重返回值
+### 2. 优先使用唯一输入避免测试漂移
 
 ```bash
-local id=$(store_memory ...)
-
-if [[ "$id" == duplicate:* ]]; then
-    skip_test "内容重复，跳过测试"
-else
-    # 正常测试逻辑
-fi
+# ✅ 正确：给边界测试输入加唯一后缀
+local content="测试内容_$(date +%s)_$$"
+local id=$(store_memory "session1" "/test" "context" "$content" "摘要" "" "")
+assert_contains "$id" "mem_" "应该成功存储唯一内容"
 ```
 
 ### 3. 直接查询数据库验证
@@ -253,7 +250,7 @@ cc-mem 核心功能已通过完整的 Red/Green TDD 测试验证，包括：
 **测试覆盖详情**:
 - `test_sqlite.sh`: 99 / 99 通过
 - `test_cli.sh`: 60 / 60 通过
-- `test_edge_cases.sh`: 28 / 28 通过，1 跳过
+- `test_edge_cases.sh`: 29 / 29 通过
 - `test_hooks.sh`: 43 / 43 通过
 
 说明：

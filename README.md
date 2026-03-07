@@ -704,11 +704,11 @@ chmod +x ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/hooks/*.sh
 
 ## 开发计划
 
-- [ ] 向量检索支持
-- [ ] 更智能的自动分类
-- [ ] Graph 视图关联
 - [ ] 跨项目记忆关联
+- [ ] 更智能的自动分类
 - [ ] 定时任务支持
+- [ ] 向量检索支持
+- [ ] Graph 视图关联
 
 ## License
 

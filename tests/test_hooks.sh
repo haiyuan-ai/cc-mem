@@ -32,6 +32,23 @@ cleanup_hooks_test() {
     unset CCMEM_CLEANUP_STATE_FILE
 }
 
+make_hook_input() {
+    local cwd="${1:-}"
+    local extra="${2:-}"
+    local input="{\"session_id\": \"$TEST_SESSION_ID\""
+
+    if [ -n "$cwd" ]; then
+        input="$input, \"cwd\": \"$cwd\""
+    fi
+
+    if [ -n "$extra" ]; then
+        input="$input, $extra"
+    fi
+
+    input="$input}"
+    echo "$input"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：Hook 脚本存在性
 # ═══════════════════════════════════════════════════════════
@@ -151,13 +168,10 @@ test_post_tool_use_edit() {
     setup_hooks_test
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
 
-    # 检查 jq 是否可用
-    if ! command -v jq &> /dev/null; then
-        echo "SKIP: jq 未安装，跳过此测试"
-        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    require_command_or_skip "jq" "jq 未安装，跳过此测试" || {
         cleanup_hooks_test
         return 0
-    fi
+    }
 
     # 模拟输入数据
     local input='{"tool_type":"Edit","tool_input":{"file_path":"src/test.c","description":"添加错误处理"}}'
@@ -179,13 +193,10 @@ test_post_tool_use_bash() {
     setup_hooks_test
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
 
-    # 检查 jq 是否可用
-    if ! command -v jq &> /dev/null; then
-        echo "SKIP: jq 未安装，跳过此测试"
-        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    require_command_or_skip "jq" "jq 未安装，跳过此测试" || {
         cleanup_hooks_test
         return 0
-    fi
+    }
 
     local input='{"tool_type":"Bash","tool_input":{"command":"npm test","description":"运行测试"}}'
 
@@ -241,20 +252,21 @@ describe "SessionStart Hook 功能"
 it "应该输出结构化上下文而不是搜索结果"
 test_session_start_outputs_context_block() {
     setup_hooks_test
-    local test_dir="/tmp/ccmem_session_start_$$"
-    mkdir -p "$test_dir"
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_session_start")
 
     store_memory "session1" "$test_dir" "decision" "SessionStart 内容" "SessionStart 摘要" "hook" "" "manual" > /dev/null
     upsert_session "$TEST_SESSION_ID" "$test_dir"
-    sqlite3 "$TEST_DB" "UPDATE sessions SET status='stopped', summary='上次停在修复注入逻辑', end_time=CURRENT_TIMESTAMP WHERE id='$TEST_SESSION_ID';"
+    db_query "UPDATE sessions SET status='stopped', summary='上次停在修复注入逻辑', end_time=CURRENT_TIMESTAMP WHERE id='$TEST_SESSION_ID';"
 
-    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"$test_dir\"}"
+    local input
+    input=$(make_hook_input "$test_dir")
     local result
     result=$(echo "$input" | bash "$HOOKS_DIR/session-start.sh" 2>/dev/null || true)
 
     assert_contains "$result" "<cc-mem-context>" "SessionStart 应该输出上下文标签"
     assert_contains "$result" "Recent High-Value Memory" "应该包含高价值记忆部分"
-    assert_true "[[ ! \"$result\" == *\"搜索记忆\"* ]]" "不应该输出 search 命令的标题"
+    assert_not_contains "$result" "搜索记忆" "不应该输出 search 命令的标题"
 
     rm -rf "$test_dir"
     cleanup_hooks_test
@@ -263,12 +275,13 @@ test_session_start_outputs_context_block() {
 it "带 prompt 时应该输出 recall 上下文"
 test_user_prompt_submit_outputs_recall_context() {
     setup_hooks_test
-    local test_dir="/tmp/ccmem_prompt_recall_$$"
-    mkdir -p "$test_dir"
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_prompt_recall")
 
     store_memory "session1" "$test_dir" "decision" "SQLite recall 内容" "SQLite recall 摘要" "sqlite" "" "manual" > /dev/null
 
-    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"$test_dir\", \"prompt\": \"SQLite\"}"
+    local input
+    input=$(make_hook_input "$test_dir" "\"prompt\": \"SQLite\"")
     local result
     result=$(echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" 2>/dev/null || true)
 
@@ -288,8 +301,8 @@ describe "Stop Hook 功能"
 it "应该从 transcript 提取最后一条助手消息"
 test_stop_extract_last_message() {
     setup_hooks_test
-    local test_dir="/tmp/ccmem_stop_test_$$"
-    mkdir -p "$test_dir"
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_stop_test")
     rm -f /tmp/ccmem_debug.log
 
     # 创建模拟 transcript
@@ -304,15 +317,15 @@ EOF
     echo "[EDIT] src/main.js: 修复 bug" > "/tmp/ccmem_${TEST_SESSION_ID}.log"
 
     # 执行 hook
-    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"transcript_path\": \"$test_dir/transcript.jsonl\", \"cwd\": \"$test_dir\"}"
+    local input
+    input=$(make_hook_input "$test_dir" "\"transcript_path\": \"$test_dir/transcript.jsonl\"")
     echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
 
     # 检查调试日志中是否成功提取消息
     if grep -q "Extracted last assistant message" /tmp/ccmem_debug.log 2>/dev/null; then
         assert_true "true" "应该提取到助手消息"
     else
-        echo -e "${YELLOW}⊘ SKIP${NC}: 调试日志不可用，跳过验证"
-        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        skip_test "调试日志不可用，跳过验证"
     fi
 
     rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log"
@@ -327,7 +340,8 @@ test_stop_no_transcript() {
     echo "[BASH] npm test: 运行测试" > "/tmp/ccmem_${TEST_SESSION_ID}.log"
 
     # 执行 hook（不带 transcript）
-    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"/tmp\"}"
+    local input
+    input=$(make_hook_input "/tmp")
     local result=$(echo "$input" | bash "$HOOKS_DIR/stop.sh" 2>&1)
 
     # 应该正常完成
@@ -340,8 +354,8 @@ test_stop_no_transcript() {
 it "应该生成包含操作统计的摘要"
 test_stop_generate_summary() {
     setup_hooks_test
-    local test_dir="/tmp/ccmem_stop_summary_$$"
-    mkdir -p "$test_dir"
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_stop_summary")
     rm -f /tmp/ccmem_debug.log
 
     # 创建操作日志（使用真实的 FILE_CHANGE 格式）
@@ -352,7 +366,8 @@ test_stop_generate_summary() {
 EOF
 
     # 执行 hook
-    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"$test_dir\"}"
+    local input
+    input=$(make_hook_input "$test_dir")
     echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
 
     # 检查摘要生成（通过调试日志）
@@ -364,8 +379,7 @@ EOF
             assert_true "false" "摘要已生成但没有操作统计（Files=）"
         fi
     else
-        echo -e "${YELLOW}⊘ SKIP${NC}: 调试日志不可用，跳过验证"
-        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        skip_test "调试日志不可用，跳过验证"
     fi
 
     rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log"
@@ -375,8 +389,8 @@ EOF
 it "应该压缩超长最终回复"
 test_stop_condenses_long_final_response() {
     setup_hooks_test
-    local test_dir="/tmp/ccmem_stop_long_reply_$$"
-    mkdir -p "$test_dir"
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_stop_long_reply")
 
     local repeated
     repeated=$(printf '补充说明段落。%.0s' $(seq 1 120))
@@ -384,13 +398,14 @@ test_stop_condenses_long_final_response() {
 {"type": "assistant", "message": {"content": "任务完成总结\\n1. 修复了搜索逻辑\\n2. 增加了中文 fallback\\n3. 补充了回归测试\\n${repeated}\\n最终建议继续观察 recall 命中质量"}}
 EOF
 
-    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"transcript_path\": \"$test_dir/transcript.jsonl\", \"cwd\": \"$test_dir\"}"
+    local input
+    input=$(make_hook_input "$test_dir" "\"transcript_path\": \"$test_dir/transcript.jsonl\"")
     echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
 
     local saved_content
-    saved_content=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE source='stop_final_response' ORDER BY rowid DESC LIMIT 1;")
+    saved_content=$(db_query "SELECT content FROM memories WHERE source='stop_final_response' ORDER BY rowid DESC LIMIT 1;")
     local content_length
-    content_length=$(sqlite3 "$TEST_DB" "SELECT LENGTH(content) FROM memories WHERE source='stop_final_response' ORDER BY rowid DESC LIMIT 1;")
+    content_length=$(db_query "SELECT LENGTH(content) FROM memories WHERE source='stop_final_response' ORDER BY rowid DESC LIMIT 1;")
 
     assert_contains "$saved_content" "关键点:" "长回复应该被裁剪成关键点格式"
     assert_contains "$saved_content" "1. 修复了搜索逻辑" "应该保留关键条目"
@@ -425,9 +440,9 @@ test_batch_save_threshold() {
 it "session-end 应该压缩超长操作日志"
 test_session_end_condenses_long_log() {
     setup_hooks_test
-    local test_dir="/tmp/ccmem_session_end_$$"
+    local test_dir
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
-    mkdir -p "$test_dir"
+    test_dir=$(create_test_dir "ccmem_session_end")
 
     cat > "$log_file" <<'EOF'
 [FILE_CHANGE] src/a.js: 修改 A
@@ -446,11 +461,12 @@ test_session_end_condenses_long_log() {
 EOF
 
     export PWD="$test_dir"
-    local input="{\"session_id\": \"$TEST_SESSION_ID\"}"
+    local input
+    input=$(make_hook_input)
     echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
 
     local saved_content
-    saved_content=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
+    saved_content=$(db_query "SELECT content FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
     assert_contains "$saved_content" "操作摘要: Files=" "超长日志应该被压缩为操作摘要"
     assert_contains "$saved_content" "最近文件变更:" "应该保留文件变更摘要"
     assert_contains "$saved_content" "最近命令:" "应该保留命令摘要"
@@ -467,13 +483,14 @@ test_session_end_runs_opportunistic_cleanup() {
     store_memory "cleanup_session_1" "/tmp/cleanup-project" "context" "低优先级旧记忆" "旧摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
 
     local before_count
-    before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='旧摘要';")
+    before_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='旧摘要';")
 
-    local input="{\"session_id\": \"$TEST_SESSION_ID\"}"
+    local input
+    input=$(make_hook_input)
     echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
 
     local after_count
-    after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='旧摘要';")
+    after_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='旧摘要';")
 
     assert_equals "1" "$before_count" "测试前应该存在待清理记忆"
     assert_equals "0" "$after_count" "session-end 应该清理过期低优先级记忆"
@@ -493,11 +510,12 @@ test_opportunistic_cleanup_throttled() {
     date +%s > "$CCMEM_CLEANUP_STATE_FILE"
     store_memory "cleanup_session_2" "/tmp/cleanup-project" "context" "节流测试记忆" "节流摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
 
-    local input="{\"session_id\": \"$TEST_SESSION_ID\"}"
+    local input
+    input=$(make_hook_input)
     echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
 
     local remaining_count
-    remaining_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='节流摘要';")
+    remaining_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='节流摘要';")
     assert_equals "1" "$remaining_count" "节流时不应执行清理"
 
     local cleanup_log
@@ -520,14 +538,11 @@ test_hooks_config_exists() {
 
 it "hooks.json 应该是有效的 JSON"
 test_hooks_config_valid_json() {
-    if command -v jq &> /dev/null; then
-        jq . "$HOOKS_DIR/hooks.json" > /dev/null 2>&1
-        local jq_result=$?
-        assert_equals "0" "$jq_result" "hooks.json 应该是有效的 JSON"
-    else
-        echo "SKIP: jq 未安装，跳过 JSON 验证"
-        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
-    fi
+    require_command_or_skip "jq" "jq 未安装，跳过 JSON 验证" || return 0
+
+    jq . "$HOOKS_DIR/hooks.json" > /dev/null 2>&1
+    local jq_result=$?
+    assert_equals "0" "$jq_result" "hooks.json 应该是有效的 JSON"
 }
 
 # ═══════════════════════════════════════════════════════════

@@ -97,11 +97,13 @@ test_capture_filters_private() {
 
 it "应该拒绝纯空白内容"
 test_capture_rejects_whitespace_only() {
-    local before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local before_count
+    before_count=$(db_query "SELECT COUNT(*) FROM memories;")
     local result
     result=$(printf "   " | "$CLI" capture -c "context" 2>&1)
     local status=$?
-    local after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local after_count
+    after_count=$(db_query "SELECT COUNT(*) FROM memories;")
 
     assert_equals "1" "$status" "纯空白内容应该返回非 0"
     assert_contains "$result" "content cannot be empty" "应该提示空内容错误"
@@ -110,11 +112,13 @@ test_capture_rejects_whitespace_only() {
 
 it "store 命令遇到无效类别时应该返回错误"
 test_store_rejects_invalid_category() {
-    local before_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local before_count
+    before_count=$(db_query "SELECT COUNT(*) FROM memories;")
     local result
     result=$(echo "store invalid category" | "$CLI" store -c "invalid_category" 2>&1)
     local status=$?
-    local after_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories;")
+    local after_count
+    after_count=$(db_query "SELECT COUNT(*) FROM memories;")
 
     assert_equals "1" "$status" "无效类别应该返回非 0"
     assert_contains "$result" "存储记忆失败" "应该提示存储失败"
@@ -277,7 +281,7 @@ test_unlink_projects_command() {
 
     local result
     result=$("$CLI" related-projects -p "/repo/cli-unlink-a" 2>&1)
-    assert_true "[[ \"$result\" != *\"/repo/cli-unlink-b\"* ]]" "删除后不应再显示关联项目"
+    assert_not_contains "$result" "/repo/cli-unlink-b" "删除后不应再显示关联项目"
 }
 
 it "应该刷新自动项目关联"
@@ -307,7 +311,7 @@ test_inject_context_outputs_context() {
     local result=$("$CLI" inject-context -p "/tmp/sessionstart-cli" -l 2 2>&1)
     assert_contains "$result" "<cc-mem-context>" "应该输出上下文标签"
     assert_contains "$result" "Recent High-Value Memory" "应该包含高价值记忆部分"
-    assert_true "[[ ! \"$result\" == *\"搜索记忆\"* ]]" "不应该输出搜索命令标题"
+    assert_not_contains "$result" "搜索记忆" "不应该输出搜索命令标题"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -325,9 +329,9 @@ test_cleanup_safe_mode() {
     result=$("$CLI" cleanup 2>&1)
 
     local temporary_count
-    temporary_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='safe temporary old';")
+    temporary_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='safe temporary old';")
     local working_count
-    working_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='safe working old';")
+    working_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='safe working old';")
 
     assert_contains "$result" "safe" "默认 cleanup 应显示 safe 模式"
     assert_equals "0" "$temporary_count" "默认 cleanup 应删除低优先级临时记忆"
@@ -342,7 +346,7 @@ test_cleanup_aggressive_mode() {
     result=$("$CLI" cleanup --aggressive 2>&1)
 
     local working_count
-    working_count=$(sqlite3 "$TEST_DB" "SELECT COUNT(*) FROM memories WHERE summary='aggressive working old';")
+    working_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='aggressive working old';")
 
     assert_contains "$result" "aggressive" "aggressive cleanup 应显示 aggressive 模式"
     assert_equals "0" "$working_count" "aggressive cleanup 应删除过期 working 记忆"

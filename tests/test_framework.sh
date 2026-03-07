@@ -40,6 +40,30 @@ cleanup_test_db() {
     rm -rf "$TEST_DB_DIR"
 }
 
+db_query() {
+    local sql="$1"
+    sqlite3 "$TEST_DB" "$sql"
+}
+
+create_test_dir() {
+    local prefix="${1:-cc-mem-test}"
+    local dir="/tmp/${prefix}_$$"
+    mkdir -p "$dir"
+    echo "$dir"
+}
+
+require_command_or_skip() {
+    local command_name="$1"
+    local reason="${2:-$command_name 未安装，跳过此测试}"
+
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        skip_test "$reason"
+        return 1
+    fi
+
+    return 0
+}
+
 # 断言函数
 assert_equals() {
     local expected="$1"
@@ -133,23 +157,6 @@ assert_file_executable() {
     fi
 }
 
-assert_true() {
-    local value="$1"
-    local message="${2:-}"
-
-    TESTS_RUN=$((TESTS_RUN + 1))
-
-    if [ "$value" = "true" ] || [ "$value" = "1" ] || [ "$value" = "yes" ]; then
-        echo -e "${GREEN}✓ PASS${NC}: $message"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        return 0
-    else
-        echo -e "${RED}✗ FAIL${NC}: $message (value is not true)"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        return 1
-    fi
-}
-
 assert_false() {
     local value="$1"
     local message="${2:-}"
@@ -199,6 +206,26 @@ assert_true() {
         return 0
     else
         echo -e "${RED}✗ FAIL${NC}: $message (condition is false)"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        return 1
+    fi
+}
+
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local message="${3:-}"
+
+    TESTS_RUN=$((TESTS_RUN + 1))
+
+    if [[ "$haystack" != *"$needle"* ]]; then
+        echo -e "${GREEN}✓ PASS${NC}: $message"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        return 0
+    else
+        echo -e "${RED}✗ FAIL${NC}: $message"
+        echo -e "  Unexpected: $needle"
+        echo -e "  In: $haystack"
         TESTS_FAILED=$((TESTS_FAILED + 1))
         return 1
     fi

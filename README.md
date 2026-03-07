@@ -2,7 +2,7 @@
 
 Claude Code 轻量级记忆管理系统
 
-**测试**: ✅ 158/158 通过 | **许可**: MIT
+**测试**: ✅ 全量回归通过 | **许可**: MIT
 
 ---
 
@@ -16,7 +16,7 @@ Claude Code 轻量级记忆管理系统
 - 🪶 **轻量简洁** - 纯 Bash 脚本，仅需 SQLite，无需 Python/Node 运行时
 - 🔒 **本地优先** - 所有数据本地存储，无云端依赖，隐私可控
 - 📦 **开箱即用** - 安装即用，无需复杂配置
-- 🧪 **测试完备** - 158 个测试用例 100% 通过（含 Hooks 实时捕获测试）
+- 🧪 **测试完备** - 存储、CLI、Hooks、边界条件全量回归通过
 
 **适用场景**:
 - ✅ 个人知识管理和会话记忆
@@ -33,12 +33,12 @@ Claude Code 轻量级记忆管理系统
 
 ## 功能特性
 
-- **自动捕获**：会话结束时自动捕获关键信息
-- **实时捕获**：工具使用后累积操作，用户输入前批量保存
+- **自动捕获**：PostToolUse / Stop / SessionEnd 自动沉淀工作过程
+- **实时注入**：SessionStart 预热上下文 + UserPromptSubmit query-aware recall
 - **分层记忆**：按来源、生命周期和自动注入资格组织记忆
 - **语义压缩**：使用 LLM 或本地规则压缩会话内容
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
-- **智能检索**：基于项目路径、标签、全文检索（三层检索）
+- **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
 - **Markdown 导出**：导出为标准 Markdown 文件（不需要 Obsidian）
 - **Hooks 集成**：SessionStart/PostToolUse/UserPromptSubmit/Stop/SessionEnd 自动注入和捕获
 - **记忆历史**：记录 create/update/delete 事件
@@ -48,7 +48,7 @@ Claude Code 轻量级记忆管理系统
 ## 快速链接
 
 - [🔧 兼容性指南](docs/COMPATIBILITY.md) - macOS/Ubuntu/Windows
-- [🧪 测试报告](tests/TEST-REPORT.md) - 158 测试用例 100% 通过
+- [🧪 测试报告](tests/TEST-REPORT.md) - 当前测试结构与说明
 - [📖 文档索引](docs/INDEX.md) - 完整文档导航
 
 ## 安装
@@ -287,6 +287,11 @@ ccmem-cli.sh search -c "debug"
 # 组合检索
 ccmem-cli.sh search -p "/path/to/project" -q "API" -c "solution" -l 5
 ```
+
+补充说明：
+- 英文/普通关键词优先走 FTS5
+- 中文查询会自动启用 `LIKE` fallback
+- `search` 更适合找候选记忆，细节可继续用 `timeline` 和 `get`
 
 #### compress - 语义压缩
 
@@ -559,10 +564,10 @@ done < notes.txt
 
 在会话结束时自动执行：
 
-1. 导出会话历史
-2. 识别关键事件
-3. 生成记忆记录
-4. 更新会话状态
+1. 更新会话状态和摘要
+2. 检查是否还有未落库的操作日志
+3. 将剩余日志作为最终兜底记忆写入数据库
+4. 清空临时日志，结束本次会话
 
 ### PostToolUse Hook
 
@@ -580,6 +585,7 @@ done < notes.txt
 - **批量保存**：将累积的操作记录一次性保存到数据库
 - **Query Recall**：基于当前 prompt 检索 2-3 条相关摘要
 - **中文支持**：中文查询优先 FTS，结果不足时回退到 LIKE
+- **输出约束**：stdout 只输出结构化 recall 注入块
 - **会话兜底**：SessionEnd Hook 保存剩余记录
 
 **数据安全性提升**：从"仅 session-end 兜底"到"三层捕获机制"，会话意外中断时最多丢失最近 5 次操作。

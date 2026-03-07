@@ -28,6 +28,7 @@ test_help_lists_commands() {
     assert_contains "$result" "init" "应该列出 init 命令"
     assert_contains "$result" "capture" "应该列出 capture 命令"
     assert_contains "$result" "search" "应该列出 search 命令"
+    assert_contains "$result" "recall" "应该列出 recall 命令"
     assert_contains "$result" "history" "应该列出 history 命令"
     assert_contains "$result" "export" "应该列出 export 命令"
     assert_not_contains "$result" "store" "不应再列出 store 命令"
@@ -175,6 +176,23 @@ test_search_memories_cjk_fallback() {
     assert_contains "$result" "搜索记忆" "中文搜索应该显示搜索信息"
     assert_contains "$result" "中文回退：已使用" "中文搜索应该标记已使用回退"
     assert_contains "$result" "中文归档" "中文搜索应该返回相关结果"
+}
+
+# ═══════════════════════════════════════════════════════════
+# 测试：recall 命令
+# ═══════════════════════════════════════════════════════════
+
+describe "recall 命令"
+
+it "应该生成 query-aware recall 注入块"
+test_recall_generates_recall_block() {
+    local project="/tmp/recall-cli"
+    echo "Recall CLI 关键决策" | "$CLI" capture -p "$project" -c "decision" -m "Recall CLI 关键决策" > /dev/null 2>&1
+
+    local result=$("$CLI" recall -p "$project" -q "关键决策" -l 2 2>&1)
+    assert_contains "$result" "<cc-mem-recall>" "应该输出 recall block"
+    assert_contains "$result" "Relevant project context" "应该包含 recall 标题"
+    assert_contains "$result" "Recall CLI 关键决策" "应该包含命中的摘要"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -415,6 +433,9 @@ test_capture_rejects_invalid_category
 test_search_memories
 test_search_shows_params
 test_search_memories_cjk_fallback
+
+# recall 命令测试
+test_recall_generates_recall_block
 
 # history 命令测试
 test_history_shows_recent

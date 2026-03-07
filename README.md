@@ -41,6 +41,7 @@ Claude Code 轻量级记忆管理系统
 - **规则分类**：自动采集路径共享同一套本地分类器，生成类别、置信度与原因，并参与分层决策
 - **持久化存储**：SQLite 本地数据库
 - **分层检索**：支持 FTS、中文 fallback、timeline、related project recall
+- **MCP 工具**：支持通过 MCP 暴露 capture/search/get/timeline/inject-context/recall
 - **Markdown 导出**：导出为标准 Markdown 文件
 - **Hooks 集成**：SessionStart / UserPromptSubmit 自动注入，PostToolUse / Stop / SessionEnd 自动采集
 - **记忆历史**：记录记忆事件与变更轨迹
@@ -66,6 +67,7 @@ Claude Code 轻量级记忆管理系统
 补充说明：
 - 安装脚本推荐环境包含 `git`、`sqlite3`、`jq`
 - 缺少 `jq` 时仍可完成基础安装注册，但 hooks 的自动注入 / 自动捕获能力建议安装 `jq`
+- 如果要启用 MCP server，建议安装 `python3`
 
 ### 方法一：一键安装脚本（推荐）
 
@@ -226,6 +228,9 @@ echo "重要内容" | ccmem-cli.sh capture -c "decision" -t "tag1,tag2"
 # 检索记忆
 ccmem-cli.sh search -p "/path/to/project" -q "关键词"
 
+# 生成 query-aware recall
+ccmem-cli.sh recall -p "/path/to/project" -q "当前问题"
+
 # 获取时间线上下文
 ccmem-cli.sh timeline -a mem_xxx -b 3 -A 3
 
@@ -358,6 +363,44 @@ ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 - 默认优先注入 durable / conditional 记忆
 - 结果不足时会补 1 条 related project 记忆
 - 连续 debug / 连续决策链会自动附加 timeline hint
+
+#### recall - 生成 query-aware recall 注入块
+
+```bash
+# 基于当前请求生成 recall 注入块
+ccmem-cli.sh recall -p "/path/to/project" -q "SQLite timeout" -l 3
+```
+
+输出特点：
+- 只输出结构化 `<cc-mem-recall>` 块
+- 当前项目优先，必要时补 related project 记忆
+- 适合在 MCP / 其他 agent 中作为按需检索入口
+
+#### MCP - 通过 MCP 共享记忆能力
+
+`cc-mem` 现在提供一个零依赖 stdio MCP server：
+
+```bash
+python3 /path/to/cc-mem/mcp/server.py
+```
+
+首批 MCP 工具：
+- `ccmem_capture`
+- `ccmem_search`
+- `ccmem_get`
+- `ccmem_timeline`
+- `ccmem_inject_context`
+- `ccmem_recall`
+
+一个最小的 Codex MCP 配置示例：
+
+```toml
+[mcp_servers.cc_mem]
+command = "python3"
+args = ["/ABSOLUTE/PATH/TO/cc-mem/mcp/server.py"]
+```
+
+这让其他 coding agent 也可以共享 `cc-mem` 的记忆保存、检索和注入能力。
 
 #### projects - 列出所有项目
 
@@ -704,7 +747,7 @@ ccmem-cli.sh capture -t "important,architecture,database"
 | **三层检索** | ✅ | ✅ | ✅ | ⚠️ 通用检索 |
 | **Hooks 集成** | ✅ | ✅ | ❌ 原生 hooks | ❌ 原生 hooks |
 | **Graph 记忆** | ❌ | ❌ | ✅ | ✅ 可选 |
-| **MCP 工具** | ❌ | ✅ | ❌ | ✅ |
+| **MCP 工具** | ✅ | ✅ | ❌ | ✅ |
 | **Web UI** | ❌ | ✅ | ❌ | ✅ |
 | **多模态** | ❌ | ❌ | ✅ | ✅ |
 

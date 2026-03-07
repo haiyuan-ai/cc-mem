@@ -1,14 +1,14 @@
 {
   "name": "haiyuan-ai-cc-mem",
-  "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现",
+  "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，支持 MCP 工具接入",
   "owner": {
     "name": "haiyuan-ai"
   },
   "plugins": [
     {
       "name": "cc-mem",
-      "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，核心依赖 SQLite",
-      "version": "1.5.1",
+      "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，支持 MCP 工具接入",
+      "version": "1.5.2",
       "author": {
         "name": "haiyuan-ai"
       },

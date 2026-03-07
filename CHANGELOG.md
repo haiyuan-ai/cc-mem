@@ -1,5 +1,36 @@
 # CC-mem 变更日志
 
+## [1.5.2] - 2026-03-07
+
+### ✨ Major Improvements
+
+#### 1. MCP Server 正式加入
+- 新增零依赖 stdio MCP server：`mcp/server.py`
+- 首批提供 6 个 MCP 工具：
+  - `ccmem_capture`
+  - `ccmem_search`
+  - `ccmem_get`
+  - `ccmem_timeline`
+  - `ccmem_inject_context`
+  - `ccmem_recall`
+- MCP server 复用现有 `capture / search / get / timeline / inject-context / recall` 逻辑，不额外引入服务端存储层
+- 为跨 agent 使用 `cc-mem` 铺平基础，便于 Claude / Codex / OpenCode 等通过 MCP 共用同一记忆库
+
+#### 2. query-aware recall 提升为正式命令
+- 新增 `ccmem-cli.sh recall`
+- 统一输出 `<cc-mem-recall>` 注入块
+- 让 CLI、MCP 和 hooks 三条链路共用同一套 recall 能力
+
+### 🧪 Testing
+
+- 新增 `tests/test_mcp.sh`
+- MCP smoke test 覆盖：
+  - `initialize`
+  - `tools/list`
+  - `ccmem_capture`
+  - `ccmem_recall`
+- CLI 新增 `recall` 命令回归测试
+
 ## [1.5.1] - 2026-03-07
 
 ### ✨ Major Improvements

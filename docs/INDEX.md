@@ -66,6 +66,8 @@ cc-mem/
 │   ├── stop.sh               # Stop Hook（会话中断时触发，可访问 transcript）
 │   ├── post-tool-use.sh      # PostToolUse Hook (实时捕获)
 │   └── user-prompt-submit.sh # UserPromptSubmit Hook (批量保存)
+├── mcp/
+│   └── server.py             # 零依赖 stdio MCP server
 ├── config/
 │   └── config.json           # 配置文件
 └── scripts/
@@ -92,6 +94,7 @@ cc-mem/
 **核心功能**:
 - 自动采集、自动注入与本地裁剪
 - SQLite 持久化存储 + FTS5 全文检索
+- MCP 工具（capture/search/get/timeline/inject-context/recall）
 - 三层检索（search → timeline → get）
 - 内容哈希去重
 - 记忆历史追踪

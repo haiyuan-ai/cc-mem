@@ -6,7 +6,7 @@ set -e
 
 OWNER="haiyuan-ai"
 REPO="cc-mem"
-VERSION="1.5.1"
+VERSION="1.5.2"
 CLAUDE_DIR="${HOME}/.claude/plugins"
 # Claude Code 期望的 marketplace 目录名格式: owner-repo
 MARKETPLACE_NAME="${OWNER}-${REPO}"
@@ -46,6 +46,7 @@ git clone --depth 1 "https://github.com/${OWNER}/${REPO}.git" "$INSTALL_DIR"
 # 1.1 确保脚本具有执行权限（跨平台 clone 后更稳）
 chmod +x "$INSTALL_DIR"/bin/*.sh 2>/dev/null || true
 chmod +x "$INSTALL_DIR"/hooks/*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR"/mcp/*.py 2>/dev/null || true
 
 # 2. 初始化数据库
 echo "  初始化数据库..."

@@ -91,6 +91,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   init              初始化数据库
   capture           捕获当前会话记忆
   search            搜索记忆（三层检索第一步）
+  recall            基于 query 生成 recall 注入块
   timeline          获取时间线上下文（三层检索第二步）
   get               获取记忆详情（三层检索第三步）
   history           查看记忆历史
@@ -108,6 +109,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
 
 示例:
   ccmem-cli.sh search -p "/path/to/project" -q "API endpoint"
+  ccmem-cli.sh recall -p "/path/to/project" -q "SQLite timeout"
   ccmem-cli.sh timeline -a mem_xxx -b 3 -A 3
   ccmem-cli.sh get mem_123 mem_456
   ccmem-cli.sh capture -c "decision" -t "important,core"
@@ -276,6 +278,40 @@ cmd_search() {
         echo ""
     fi
     echo "$results"
+}
+
+cmd_recall() {
+    local project_path=""
+    local query=""
+    local limit=3
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -p|--project) project_path="$2"; shift ;;
+            -q|--query) query="$2"; shift ;;
+            -l|--limit) limit="$2"; shift ;;
+            -h|--help)
+                print_command_usage "recall -p <project> -q <query> [-l limit]"
+                echo "生成 query-aware recall 注入块"
+                echo ""
+                echo "选项："
+                echo "  -p, --project    项目路径（默认当前目录）"
+                echo "  -q, --query      当前请求关键词"
+                echo "  -l, --limit      recall 结果数量（默认 3）"
+                return
+                ;;
+            *) print_unknown_option "$1"; return 1 ;;
+        esac
+        shift
+    done
+
+    if [ -z "$query" ]; then
+        print_command_usage "recall -p <project> -q <query> [-l limit]"
+        return 1
+    fi
+
+    project_path="$(resolve_effective_project_path "$project_path")"
+    generate_query_recall_context "$project_path" "$query" "$limit"
 }
 
 cmd_list() {
@@ -720,6 +756,9 @@ main() {
             ;;
         search)
             cmd_search "$@"
+            ;;
+        recall)
+            cmd_recall "$@"
             ;;
         timeline)
             cmd_timeline "$@"

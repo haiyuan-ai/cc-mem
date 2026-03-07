@@ -13,6 +13,7 @@
 | **CLI 命令测试** | 持续更新 | ✅ 通过 |
 | **边界条件测试** | 持续更新 | ✅ 通过 |
 | **Hooks 功能测试** | 持续更新 | ✅ 通过 |
+| **MCP Server 测试** | 持续更新 | ✅ 通过 |
 | **总计** | 持续更新 | ✅ 通过 |
 
 ---
@@ -64,8 +65,16 @@
 | projects | 1 | ✅ |
 | 项目关联命令 | 3 | ✅ |
 | inject-context | 1 | ✅ |
+| recall | 1 | ✅ |
 | cleanup | 2 | ✅ |
 | 错误处理 | 2 | ✅ |
+
+### MCP Server 测试
+
+| 模块 | 测试用例 | 状态 |
+|------|---------|------|
+| tools/list | 1 | ✅ |
+| capture + recall smoke test | 1 | ✅ |
 
 ### Hooks 功能测试
 
@@ -98,6 +107,7 @@
 | 分层记忆清理 | ✅ | ✅ | ✅ |
 | 跨项目关联 | ✅ | - | ✅ |
 | 注入与 recall | ✅ | - | ✅ |
+| MCP server | ✅ | - | ✅ |
 | 时间戳 epoch | ✅ | ✅ | ✅ |
 | 项目隔离 | ✅ | ✅ | ✅ |
 | get_memory/get_timeline | ✅ | - | ✅ |
@@ -114,6 +124,7 @@ tests/
 ├── test_cli.sh             # CLI 命令测试
 ├── test_edge_cases.sh      # 边界条件测试
 ├── test_hooks.sh           # Hooks 功能测试
+├── test_mcp.sh             # MCP Server 测试
 ├── run_tests.sh            # 测试运行器
 └── TEST-REPORT.md          # 本文档
 ```
@@ -126,6 +137,12 @@ lib/
 ├── injection.sh            # 注入与 recall 逻辑
 ├── memory_policy.sh        # 分层与清理策略
 └── content_utils.sh        # 概念识别与私有内容过滤
+```
+
+**MCP**:
+```
+mcp/
+└── server.py               # 零依赖 stdio MCP server
 ```
 
 **Hooks**:
@@ -162,6 +179,7 @@ bash tests/test_sqlite.sh      # SQLite 测试
 bash tests/test_cli.sh         # CLI 测试
 bash tests/test_edge_cases.sh  # 边界测试
 bash tests/test_hooks.sh       # Hooks 功能测试
+bash tests/test_mcp.sh         # MCP Server 测试
 ```
 
 ---

@@ -19,6 +19,7 @@
 |------|------|-----------------|
 | perl | 私有内容过滤 | 使用 sed 简单模式 |
 | jq | JSON 处理 | 可完成基础安装，但完整 hooks 自动注入 / 自动采集能力强烈建议安装 |
+| python3 | MCP server 运行时 | MCP 功能不可用 |
 | du | 数据库大小显示 | 使用 stat 命令替代 |
 
 ## 安装方法
@@ -28,7 +29,7 @@
 ```bash
 # 系统自带 SQLite3 和 Bash，无需额外安装
 # 强烈建议：安装 jq（完整 hooks 能力）
-brew install jq
+brew install jq python
 ```
 
 ### Ubuntu/Debian
@@ -36,7 +37,7 @@ brew install jq
 ```bash
 # 安装依赖
 sudo apt-get update
-sudo apt-get install -y sqlite3 jq perl
+sudo apt-get install -y sqlite3 jq perl python3
 
 # 如果 Bash 版本 < 4.0，建议升级
 sudo apt-get install -y bash
@@ -65,7 +66,11 @@ format_iso8601() {
 
 **说明**: 安装脚本在缺少 `jq` 时可回退到 Python/手工 JSON 注册，但 hooks 的完整 JSON 解析与自动注入/采集能力仍建议安装 `jq`。
 
-### 3. 数据库大小显示
+### 3. MCP Server 运行时
+
+**说明**: `cc-mem` 的 MCP server 使用 `python3` 运行；不安装 `python3` 不影响 CLI、SQLite 和 hooks 主链路，但无法启用 MCP 工具。
+
+### 4. 数据库大小显示
 
 **问题**: `du -h` 输出格式在不同系统上不同
 
@@ -85,7 +90,7 @@ else
 fi
 ```
 
-### 4. 随机数生成
+### 5. 随机数生成
 
 **问题**: `/dev/urandom` 在某些容器环境中不可用
 
@@ -98,7 +103,7 @@ else
 fi
 ```
 
-### 5. Sed 兼容性
+### 6. Sed 兼容性
 
 **问题**: BSD sed 和 GNU sed 参数不同
 

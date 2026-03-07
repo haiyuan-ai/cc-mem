@@ -21,7 +21,7 @@ scoop install sqlite
 ### 2. 运行兼容性检查
 
 ```bash
-cd /c/Users/YourName/.claude/plugins/marketplaces/cc-mem
+cd /c/Users/YourName/.claude/plugins/marketplaces/haiyuan-ai-cc-mem
 bash scripts/check-compat.sh
 ```
 
@@ -65,7 +65,7 @@ bash bin/ccmem-cli.sh init
 bash bin/ccmem-cli.sh status
 
 # 捕获记忆
-echo "Git Bash 测试" | bash bin/ccmem-cli.sh capture -c "test" -t "gitbash"
+echo "Git Bash 测试" | bash bin/ccmem-cli.sh capture -c "context" -t "gitbash"
 
 # 检索
 bash bin/ccmem-cli.sh search -q "Git Bash"

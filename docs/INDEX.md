@@ -98,5 +98,5 @@ cc-mem/
 - 概念标签自动识别
 - 私有内容过滤
 - Markdown 导出
-- **Hooks 实时捕获**：PostToolUse + UserPromptSubmit + Stop + SessionEnd 四层捕获机制
+- **Hooks 自动注入与捕获**：SessionStart / UserPromptSubmit 负责注入，PostToolUse / Stop / SessionEnd 负责捕获与收尾
   - Stop Hook 支持访问 transcript 生成会话摘要

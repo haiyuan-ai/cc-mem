@@ -8,12 +8,12 @@ Claude Code 轻量级记忆管理系统
 
 ## 产品定位
 
-**CC-mem** 是一个专为 Claude Code 设计的**轻量级记忆管理工具**，采用纯 Bash 实现，零额外依赖。
+**CC-mem** 是一个专为 Claude Code 设计的**轻量级记忆管理工具**，采用纯 Bash 实现。
 
 **目标用户**: 个人开发者、技术博主、AI 助手重度用户
 
 **核心价值**:
-- 🪶 **轻量简洁** - 纯 Bash 脚本，仅需 SQLite，无需 Python/Node 运行时
+- 🪶 **轻量简洁** - 纯 Bash 脚本，核心依赖 SQLite，无需 Python/Node 运行时
 - 🔒 **本地优先** - 所有数据本地存储，无云端依赖，隐私可控
 - 📦 **开箱即用** - 安装即用，无需复杂配置
 - 🧪 **测试完备** - 存储、CLI、Hooks、边界条件全量回归通过
@@ -40,7 +40,7 @@ Claude Code 轻量级记忆管理系统
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
 - **Markdown 导出**：导出为标准 Markdown 文件
-- **Hooks 集成**：SessionStart/PostToolUse/UserPromptSubmit/Stop/SessionEnd 自动注入和捕获
+- **Hooks 集成**：SessionStart/UserPromptSubmit 自动注入，PostToolUse/Stop/SessionEnd 自动捕获
 - **记忆历史**：记录 create/update/delete 事件
 - **内容去重**：SHA256 哈希，自动检测重复内容
 - **概念标签**：7 种预定义概念，自动识别
@@ -479,15 +479,13 @@ done < notes.txt
 ```json
 {
   "memory": {
-    "db_path": "~/.claude/cc-mem/memory.db",
     "markdown_export_path": "~/cc-mem-export"
-  },
-  "capture": {
-    "auto_capture": true,
-    "capture_tool_calls": true
   }
 }
 ```
+
+当前版本实际会读取的主要是 `memory.markdown_export_path`。
+数据库路径请通过环境变量 `MEMORY_DB` 指定；`capture.*` 这类开关目前还没有接入运行逻辑。
 
 ## 数据库结构
 
@@ -561,7 +559,7 @@ done < notes.txt
 - **输出约束**：stdout 只输出结构化 recall 注入块
 - **会话兜底**：SessionEnd Hook 保存剩余记录
 
-**数据安全性提升**：从"仅 session-end 兜底"到"三层捕获机制"，会话意外中断时最多丢失最近 5 次操作。
+**数据安全性提升**：从“仅 session-end 兜底”到“三层捕获机制”，可以降低会话意外中断导致的操作丢失风险。
 
 ## Markdown 导出格式
 
@@ -698,9 +696,9 @@ chmod +x ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/hooks/*.sh
 ## 隐私和安全
 
 - 所有数据本地存储
-- 可配置敏感信息过滤
-- 支持按项目隔离记忆
-- 定期清理过期数据
+- 支持敏感内容过滤（如 `<private>` 标签）
+- 支持按项目隔离记忆（基于 `project_root`）
+- 支持清理过期数据（可手动执行 `cleanup` 命令）
 
 ## 开发计划
 

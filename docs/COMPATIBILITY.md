@@ -111,7 +111,7 @@ sed 's/old/new/g' file.txt > /tmp/tmp && mv /tmp/tmp file.txt
 
 ```bash
 # 运行兼容性检查脚本
-bash ~/.claude/plugins/marketplaces/cc-mem/scripts/check-compat.sh
+bash ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/scripts/check-compat.sh
 ```
 
 ### 检查输出示例
@@ -190,10 +190,10 @@ wsl --install -d Ubuntu
 # 注意：路径需要使用 WSL2 格式
 
 # 访问 Windows 文件（可选）
-cd /mnt/c/Users/YourName/.claude/plugins/marketplaces/cc-mem
+cd /mnt/c/Users/YourName/.claude/plugins/marketplaces/haiyuan-ai-cc-mem
 
 # 或者直接复制到 WSL2 home 目录
-cp -r /mnt/c/Users/YourName/.claude/plugins/marketplaces/cc-mem ~/cc-mem
+cp -r /mnt/c/Users/YourName/.claude/plugins/marketplaces/haiyuan-ai-cc-mem ~/cc-mem
 cd ~/cc-mem
 
 # 运行
@@ -230,7 +230,7 @@ cat /tmp/ccmem_debug.log
 ```bash
 # 打开 Git Bash
 # 导航到 cc-mem 目录
-cd /c/Users/YourName/.claude/plugins/marketplaces/cc-mem
+cd /c/Users/YourName/.claude/plugins/marketplaces/haiyuan-ai-cc-mem
 
 # 运行
 bash bin/ccmem-cli.sh status

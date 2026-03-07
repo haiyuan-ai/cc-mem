@@ -8,7 +8,7 @@ Claude Code 轻量级记忆管理系统
 
 ## 产品定位
 
-**CC-mem** 是一个专为 Claude Code 设计的**轻量级记忆管理工具**，采用纯 Bash 实现。
+**CC-mem** 是一个面向 Claude Code 的**本地优先、规则驱动、分层存储、可解释注入的记忆系统**。
 
 **目标用户**: 个人开发者、技术博主、AI 助手重度用户
 
@@ -701,15 +701,15 @@ ccmem-cli.sh capture -t "important,architecture,database"
 | 特性 | **CC-mem** | claude-mem | memU | mem0 |
 |------|------------|------------|------|------|
 | **实现语言** | Bash | TypeScript | Python | Python |
-| **依赖要求** | 仅 SQLite | Node/Bun | Python | Python |
-| **数据库** | SQLite + FTS5 | SQLite + FTS5 | SQLite/Postgres | SQLite + Vector DB |
-| **向量检索** | ❌ FTS5 全文检索 | ❌ FTS5 | ✅ pgvector | ✅ 25+ Vector DB |
+| **依赖要求** | SQLite（完整 hooks 体验建议安装 `jq`） | Node/Bun + SQLite + Chroma | Python | Python |
+| **数据库** | SQLite + FTS5 | SQLite + FTS5 + Chroma | SQLite / Postgres / pgvector | 向量数据库为主 |
+| **向量检索** | ❌ | ✅ Chroma 混合检索 | ✅ pgvector / 向量检索 | ✅ 多种向量后端 |
 | **记忆历史** | ✅ | ✅ | ✅ | ✅ |
-| **内容去重** | ✅ SHA256 | ✅ | ✅ | ✅ |
-| **概念标签** | ✅ 7 种自动识别 | ✅ | ✅ | ✅ |
-| **三层检索** | ✅ | ✅ | ✅ | ✅ |
-| **Hooks 集成** | ✅ | ✅ | ✅ | ✅ |
-| **Graph 记忆** | ❌ | ❌ | ✅ | ✅ |
+| **内容去重** | ✅ 内容哈希 | ✅ | ✅ | ✅ |
+| **概念标签** | ✅ 预定义概念自动识别 | ✅ | ✅ | ✅ |
+| **三层检索** | ✅ | ✅ | ✅ | ⚠️ 通用检索 |
+| **Hooks 集成** | ✅ Claude Code hooks | ✅ Claude Code hooks | ❌ 原生 hooks | ❌ 原生 hooks |
+| **Graph 记忆** | ❌ | ❌ | ✅ | ✅ 可选 |
 | **MCP 工具** | ❌ | ✅ | ❌ | ✅ |
 | **Web UI** | ❌ | ✅ | ❌ | ✅ |
 | **多模态** | ❌ | ❌ | ✅ | ✅ |
@@ -723,7 +723,7 @@ ccmem-cli.sh capture -t "important,architecture,database"
 | 需要向量检索 | mem0 / memU |
 | 需要 Graph 记忆 | memU |
 | 需要 Web UI | claude-mem / mem0 |
-| 零依赖安装 | **CC-mem** ✅ |
+| 本地轻量安装 | **CC-mem** ✅ |
 
 ---
 

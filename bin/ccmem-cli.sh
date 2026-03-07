@@ -300,10 +300,10 @@ cmd_list() {
     fi
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, concepts, summary, project_path, tags
+SELECT id, datetime(timestamp_epoch, 'unixepoch', 'localtime') AS timestamp, category, concepts, summary, project_path, tags
 FROM memories
 $where_clause
-ORDER BY timestamp DESC
+ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF
 }

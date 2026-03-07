@@ -14,7 +14,7 @@ get_recent_project_memories() {
     project_root_escaped=$(sql_escape "$project_root")
 
     sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
 FROM memories
 WHERE project_root = '$project_root_escaped'
 ORDER BY timestamp_epoch DESC
@@ -175,7 +175,7 @@ select_sessionstart_memories() {
     project_root_escaped=$(sql_escape "$project_root")
 
     candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND summary IS NOT NULL
@@ -234,7 +234,7 @@ select_related_sessionstart_memories() {
     related_root_escaped=$(sql_escape "$related_root")
 
     candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$related_root_escaped'
   AND summary IS NOT NULL
@@ -303,7 +303,7 @@ get_timeline_hint_candidates() {
     project_root_escaped=$(sql_escape "$project_root")
 
     sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT timestamp, category, summary
+SELECT $(memory_display_timestamp_sql) AS timestamp, category, summary
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND summary IS NOT NULL
@@ -370,7 +370,7 @@ query_recall_memories_for_root() {
 
     if contains_cjk "$query"; then
         sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND auto_inject_policy IN ('always', 'conditional')
@@ -389,7 +389,7 @@ EOF
     fi
 
     sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND auto_inject_policy IN ('always', 'conditional')

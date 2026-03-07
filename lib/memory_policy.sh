@@ -170,13 +170,12 @@ WHERE memory_kind = 'temporary'
   AND auto_inject_policy IN ('never', 'manual_only')
   AND (
       (expires_at IS NOT NULL AND expires_at != '' AND expires_at < datetime('now'))
-      OR timestamp < datetime('now', '-$days days')
+      OR timestamp_epoch < CAST(strftime('%s', 'now', '-$days days') AS INTEGER)
   )
 ORDER BY
-  CASE
-    WHEN expires_at IS NOT NULL AND expires_at != '' THEN expires_at
-    ELSE timestamp
-  END ASC
+  CASE WHEN expires_at IS NOT NULL AND expires_at != '' THEN 0 ELSE 1 END ASC,
+  COALESCE(expires_at, '') ASC,
+  timestamp_epoch ASC
 LIMIT $limit;
 DELETE FROM memories WHERE id IN (SELECT id FROM cleanup_candidates);
 SELECT changes();
@@ -200,19 +199,18 @@ WHERE NOT (memory_kind = 'durable' AND auto_inject_policy = 'always')
       OR (
           memory_kind = 'temporary'
           AND auto_inject_policy IN ('never', 'manual_only')
-          AND timestamp < datetime('now', '-$days days')
+          AND timestamp_epoch < CAST(strftime('%s', 'now', '-$days days') AS INTEGER)
       )
       OR (
           memory_kind = 'working'
           AND auto_inject_policy = 'conditional'
-          AND timestamp < datetime('now', '-$days days')
+          AND timestamp_epoch < CAST(strftime('%s', 'now', '-$days days') AS INTEGER)
       )
   )
 ORDER BY
-  CASE
-    WHEN expires_at IS NOT NULL AND expires_at != '' THEN expires_at
-    ELSE timestamp
-  END ASC
+  CASE WHEN expires_at IS NOT NULL AND expires_at != '' THEN 0 ELSE 1 END ASC,
+  COALESCE(expires_at, '') ASC,
+  timestamp_epoch ASC
 LIMIT $limit;
 DELETE FROM memories WHERE id IN (SELECT id FROM cleanup_candidates);
 SELECT changes();

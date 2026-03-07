@@ -25,6 +25,13 @@ test_memories_table_exists() {
     assert_equals "memories" "$result" "memories 表应该存在"
 }
 
+it "memories 表不应再保留冗余 timestamp 列"
+test_memories_table_drops_legacy_timestamp_column() {
+    local result
+    result=$(sqlite3 "$TEST_DB" "PRAGMA table_info(memories);" | awk -F'|' '$2 == \"timestamp\" { print $2 }')
+    assert_true "[ -z \"$result\" ]" "memories 表不应再包含旧的 timestamp 列"
+}
+
 it "应该创建 sessions 表"
 test_sessions_table_exists() {
     local result=$(sqlite3 "$TEST_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions';")

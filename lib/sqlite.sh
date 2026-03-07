@@ -85,6 +85,121 @@ resolve_git_common_dir() {
     (cd "$project_path" 2>/dev/null && cd "$common_dir" 2>/dev/null && pwd)
 }
 
+memory_display_timestamp_sql() {
+    echo "datetime(timestamp_epoch, 'unixepoch', 'localtime')"
+}
+
+ensure_memories_runtime_objects() {
+    sqlite3 "$MEMORY_DB" <<'EOF'
+CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
+CREATE INDEX IF NOT EXISTS idx_memories_content_hash_scope ON memories(content_hash, project_root);
+CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id);
+CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_path);
+CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
+CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories(tags);
+CREATE INDEX IF NOT EXISTS idx_memories_timestamp_epoch ON memories(timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source);
+CREATE INDEX IF NOT EXISTS idx_memories_memory_kind ON memories(memory_kind);
+CREATE INDEX IF NOT EXISTS idx_memories_auto_inject_policy ON memories(auto_inject_policy);
+CREATE INDEX IF NOT EXISTS idx_memories_project_root ON memories(project_root);
+CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
+
+DROP TABLE IF EXISTS memories_fts;
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    content,
+    summary,
+    tags,
+    content='memories',
+    content_rowid='rowid'
+);
+
+INSERT INTO memories_fts(memories_fts) VALUES('rebuild');
+
+DROP TRIGGER IF EXISTS memories_ai;
+CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(rowid, content, summary, tags)
+    VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
+END;
+
+DROP TRIGGER IF EXISTS memories_ad;
+CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content, summary, tags)
+    VALUES ('delete', OLD.rowid, OLD.content, OLD.summary, OLD.tags);
+END;
+
+DROP TRIGGER IF EXISTS memories_au;
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content, summary, tags)
+    VALUES ('delete', OLD.rowid, OLD.content, OLD.summary, OLD.tags);
+    INSERT INTO memories_fts(rowid, content, summary, tags)
+    VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
+END;
+EOF
+}
+
+migrate_memories_table_to_epoch_only() {
+    local has_timestamp_column=""
+    has_timestamp_column=$(sqlite3 "$MEMORY_DB" "PRAGMA table_info(memories);" | awk -F'|' '$2 == "timestamp" { print 1 }')
+    [ -z "$has_timestamp_column" ] && return 0
+
+    sqlite3 "$MEMORY_DB" <<'EOF'
+UPDATE memories
+SET timestamp_epoch = COALESCE(
+    NULLIF(timestamp_epoch, 0),
+    CAST(strftime('%s', timestamp) AS INTEGER),
+    CAST(strftime('%s', 'now') AS INTEGER)
+)
+WHERE timestamp_epoch IS NULL OR timestamp_epoch = 0;
+
+BEGIN TRANSACTION;
+
+CREATE TABLE memories_new (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    timestamp_epoch INTEGER,
+    project_path TEXT,
+    project_root TEXT,
+    category TEXT CHECK(category IN ('decision', 'solution', 'pattern', 'debug', 'context')),
+    source TEXT DEFAULT 'manual',
+    classification_confidence INTEGER,
+    classification_reason TEXT,
+    classification_source TEXT,
+    classification_version TEXT,
+    memory_kind TEXT DEFAULT 'working',
+    auto_inject_policy TEXT DEFAULT 'conditional',
+    expires_at TEXT,
+    content_hash TEXT,
+    concepts TEXT,
+    content TEXT NOT NULL,
+    content_preview TEXT,
+    summary TEXT,
+    tags TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO memories_new (
+    id, session_id, timestamp_epoch, project_path, project_root, category, source,
+    classification_confidence, classification_reason, classification_source, classification_version,
+    memory_kind, auto_inject_policy, expires_at, content_hash, concepts, content,
+    content_preview, summary, tags, created_at, updated_at
+)
+SELECT
+    id, session_id, timestamp_epoch, project_path, project_root, category, source,
+    classification_confidence, classification_reason, classification_source, classification_version,
+    memory_kind, auto_inject_policy, expires_at, content_hash, concepts, content,
+    content_preview, summary, tags, created_at, updated_at
+FROM memories;
+
+DROP TABLE memories;
+ALTER TABLE memories_new RENAME TO memories;
+
+COMMIT;
+EOF
+
+    ensure_memories_runtime_objects
+}
+
 SQLITE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SQLITE_LIB_DIR/classification.sh"
 source "$SQLITE_LIB_DIR/memory_policy.sh"
@@ -146,9 +261,9 @@ END;
 UPDATE memories
 SET expires_at = CASE
     WHEN expires_at IS NOT NULL AND expires_at != '' THEN expires_at
-    WHEN source = 'stop_summary' THEN datetime(COALESCE(timestamp, CURRENT_TIMESTAMP), '+14 days')
-    WHEN source IN ('post_tool_use', 'session_end') THEN datetime(COALESCE(timestamp, CURRENT_TIMESTAMP), '+3 days')
-    WHEN source = 'stop_final_response' THEN datetime(COALESCE(timestamp, CURRENT_TIMESTAMP), '+7 days')
+    WHEN source = 'stop_summary' AND timestamp_epoch IS NOT NULL THEN datetime(timestamp_epoch, 'unixepoch', '+14 days')
+    WHEN source IN ('post_tool_use', 'session_end') AND timestamp_epoch IS NOT NULL THEN datetime(timestamp_epoch, 'unixepoch', '+3 days')
+    WHEN source = 'stop_final_response' AND timestamp_epoch IS NOT NULL THEN datetime(timestamp_epoch, 'unixepoch', '+7 days')
     ELSE NULL
 END;
 EOF
@@ -177,14 +292,9 @@ ensure_schema_columns() {
     ensure_column_exists "memories" "project_root" "project_root TEXT"
     ensure_column_exists "memories" "expires_at" "expires_at TEXT"
     ensure_column_exists "sessions" "project_root" "project_root TEXT"
+    migrate_memories_table_to_epoch_only
 
     sqlite3 "$MEMORY_DB" <<EOF
-CREATE INDEX IF NOT EXISTS idx_memories_content_hash_scope ON memories(content_hash, project_root);
-CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source);
-CREATE INDEX IF NOT EXISTS idx_memories_memory_kind ON memories(memory_kind);
-CREATE INDEX IF NOT EXISTS idx_memories_auto_inject_policy ON memories(auto_inject_policy);
-CREATE INDEX IF NOT EXISTS idx_memories_project_root ON memories(project_root);
-CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_root ON sessions(project_root);
 
 CREATE TABLE IF NOT EXISTS project_links (
@@ -203,6 +313,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_project_links_pair ON project_links(source
 CREATE INDEX IF NOT EXISTS idx_project_links_source ON project_links(source_root, strength DESC);
 CREATE INDEX IF NOT EXISTS idx_project_links_target ON project_links(target_root);
 EOF
+
+    ensure_memories_runtime_objects
 
     sqlite3 "$MEMORY_DB" <<EOF
 UPDATE memories
@@ -348,7 +460,6 @@ init_db() {
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     timestamp_epoch INTEGER,
     project_path TEXT,
     project_root TEXT,
@@ -370,9 +481,6 @@ CREATE TABLE IF NOT EXISTS memories (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
--- 为 content_hash 创建索引（用于去重检查）
-CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
 
 -- 会话表
 CREATE TABLE IF NOT EXISTS sessions (
@@ -428,49 +536,10 @@ CREATE TABLE IF NOT EXISTS memory_history (
 CREATE INDEX IF NOT EXISTS idx_history_memory ON memory_history(memory_id);
 CREATE INDEX IF NOT EXISTS idx_history_timestamp ON memory_history(timestamp DESC);
 
--- 创建索引
-CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id);
-CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_path);
-CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category);
-CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories(tags);
-CREATE INDEX IF NOT EXISTS idx_memories_timestamp_epoch ON memories(timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path);
 
--- 创建全文虚拟表（如果 SQLite 支持 FTS5）
-DROP TABLE IF EXISTS memories_fts;
-CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-    content,
-    summary,
-    tags,
-    content='memories',
-    content_rowid='rowid'
-);
-
--- 重建 FTS 索引（确保已有数据被索引）
-INSERT INTO memories_fts(memories_fts) VALUES('rebuild');
-
--- 创建触发器同步 FTS
-DROP TRIGGER IF EXISTS memories_ai;
-CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-    INSERT INTO memories_fts(rowid, content, summary, tags)
-    VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
-END;
-
-DROP TRIGGER IF EXISTS memories_ad;
-CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-    INSERT INTO memories_fts(memories_fts, rowid, content, summary, tags)
-    VALUES ('delete', OLD.rowid, OLD.content, OLD.summary, OLD.tags);
-END;
-
-DROP TRIGGER IF EXISTS memories_au;
-CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-    INSERT INTO memories_fts(memories_fts, rowid, content, summary, tags)
-    VALUES ('delete', OLD.rowid, OLD.content, OLD.summary, OLD.tags);
-    INSERT INTO memories_fts(rowid, content, summary, tags)
-    VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
-END;
-
 EOF
+    ensure_memories_runtime_objects
     ensure_schema_columns
     echo "Database initialized at $MEMORY_DB"
 }
@@ -667,7 +736,7 @@ retrieve_memories() {
     fi
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags,
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags,
        CASE
            WHEN project_path = '$project_path_escaped' THEN 3
            WHEN project_path LIKE '$project_path_escaped/%' THEN 2
@@ -707,7 +776,7 @@ retrieve_memories_staged() {
     # 阶段 1: 精确匹配（项目路径 + 类别）
     if [ -n "$project_path" ] && [ -n "$category" ]; then
         results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE project_path = '$project_path_escaped' AND category = '$category_escaped'
 ORDER BY timestamp_epoch DESC
@@ -729,7 +798,7 @@ EOF
         if contains_cjk "$query"; then
             # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
             results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
   AND rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
@@ -741,7 +810,7 @@ EOF
             if [ "$count" -lt "$min_results" ]; then
                 RETRIEVE_CJK_FALLBACK_USED=1
                 results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
   AND (rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
@@ -753,7 +822,7 @@ EOF
             fi
         else
             results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
   AND rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
@@ -777,7 +846,7 @@ EOF
         if contains_cjk "$query"; then
             # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
             results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
 ORDER BY timestamp_epoch DESC
@@ -788,7 +857,7 @@ EOF
             if [ "$count" -lt "$min_results" ]; then
                 RETRIEVE_CJK_FALLBACK_USED=1
                 results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
    OR content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%'
@@ -799,7 +868,7 @@ EOF
             fi
         else
             results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
 ORDER BY timestamp_epoch DESC
@@ -817,7 +886,7 @@ EOF
     # 阶段 4: 仅按项目检索
     if [ -n "$project_path" ]; then
         results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%'
 ORDER BY timestamp_epoch DESC
@@ -830,7 +899,7 @@ EOF
 
     # 阶段 5: 返回所有结果
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
@@ -844,7 +913,7 @@ get_memory() {
     memory_id_escaped=$(sql_escape "$memory_id")
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, session_id, timestamp, project_path, project_root, category, source, memory_kind,
+SELECT id, session_id, $(memory_display_timestamp_sql) AS timestamp, project_path, project_root, category, source, memory_kind,
        auto_inject_policy, expires_at, content, summary, concepts, tags
 FROM memories
 WHERE id = '$memory_id_escaped';
@@ -869,7 +938,7 @@ get_timeline() {
 
     # 获取锚点前后的记忆
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, timestamp, category, summary, concepts, tags,
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags,
        CASE WHEN timestamp_epoch < $anchor_epoch THEN 'before'
             WHEN timestamp_epoch > $anchor_epoch THEN 'after'
             ELSE 'anchor' END as position
@@ -959,7 +1028,7 @@ export_to_markdown() {
     fi
 
     # 只导出有效的记忆记录（id 以 mem_开头）
-    sqlite3 -separator '|' "$MEMORY_DB" "SELECT id, timestamp, category, summary, tags, content FROM memories $where_clause AND id GLOB 'mem_*' ORDER BY timestamp DESC;" | while IFS='|' read -r id timestamp category summary tags content; do
+    sqlite3 -separator '|' "$MEMORY_DB" "SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, content FROM memories $where_clause AND id GLOB 'mem_*' ORDER BY timestamp_epoch DESC;" | while IFS='|' read -r id timestamp category summary tags content; do
         # 跳过空 ID
         [ -z "$id" ] && continue
 
@@ -985,7 +1054,7 @@ MDEOF
 # 列出所有项目
 list_projects() {
     sqlite3 -header -column "$MEMORY_DB" "
-        SELECT project_path, COUNT(*) as count, MAX(timestamp) as last_updated
+        SELECT project_path, COUNT(*) as count, datetime(MAX(timestamp_epoch), 'unixepoch', 'localtime') as last_updated
         FROM memories
         GROUP BY project_path
         ORDER BY count DESC;
@@ -1029,7 +1098,7 @@ get_memory_history() {
     memory_id_escaped=$(sql_escape "$memory_id")
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, memory_id, event_type, old_value, new_value, timestamp, session_id
+SELECT id, memory_id, event_type, old_value, new_value, datetime(timestamp, 'localtime') AS timestamp, session_id
 FROM memory_history
 WHERE memory_id = '$memory_id_escaped'
 ORDER BY timestamp DESC
@@ -1050,7 +1119,7 @@ get_recent_history() {
     fi
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT h.id, h.memory_id, h.event_type, h.old_value, h.new_value, h.timestamp, h.session_id, m.project_path
+SELECT h.id, h.memory_id, h.event_type, h.old_value, h.new_value, datetime(h.timestamp, 'localtime') AS timestamp, h.session_id, m.project_path
 FROM memory_history h
 LEFT JOIN memories m ON h.memory_id = m.id
 $where_clause

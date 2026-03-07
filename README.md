@@ -529,8 +529,7 @@ done < notes.txt
 |------|------|------|
 | id | TEXT | 主键 |
 | session_id | TEXT | 会话 ID |
-| timestamp | DATETIME | 时间戳 |
-| timestamp_epoch | INTEGER | Epoch 时间戳（用于排序与清理） |
+| timestamp_epoch | INTEGER | Epoch 时间戳（唯一权威时间字段，用于排序、清理和本地显示） |
 | project_path | TEXT | 项目路径 |
 | project_root | TEXT | 稳定项目根路径（git root 或当前路径） |
 | category | TEXT | 类别 |

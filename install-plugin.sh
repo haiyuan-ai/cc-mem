@@ -6,7 +6,7 @@ set -e
 
 OWNER="haiyuan-ai"
 REPO="cc-mem"
-VERSION="1.4.0"
+VERSION="1.5.0"
 CLAUDE_DIR="${HOME}/.claude/plugins"
 # Claude Code 期望的 marketplace 目录名格式: owner-repo
 MARKETPLACE_NAME="${OWNER}-${REPO}"

@@ -120,6 +120,7 @@ if [ -f "$LOG_FILE" ]; then
             -p "$PROJECT_PATH" \
             -c "$CATEGORY" \
             -s "$SESSION_ID" \
+            --source "post_tool_use" \
             --concepts "what-changed" \
             2>/dev/null || true
 

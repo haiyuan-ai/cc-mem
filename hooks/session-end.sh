@@ -78,6 +78,7 @@ if [ -f "$CLI" ]; then
                 -c "$CATEGORY" \
                 -s "$SESSION_ID" \
                 -t "session-end,auto-captured" \
+                --source "session_end" \
                 --concepts "what-changed" \
                 2>/dev/null || true
 

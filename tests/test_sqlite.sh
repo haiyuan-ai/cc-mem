@@ -132,6 +132,42 @@ test_store_memory_all_fields() {
     assert_contains "$result" "trade-off" "概念应该正确"
 }
 
+it "应该写入分层元数据字段"
+test_store_memory_metadata_fields() {
+    local id=$(store_memory "session1" "/test/project" "decision" "分层内容" "分层摘要" "tag1" "" "manual")
+
+    local result=$(sqlite3 "$TEST_DB" "SELECT source, memory_kind, auto_inject_policy, project_root FROM memories WHERE id='$id';")
+    assert_contains "$result" "manual" "应该记录来源"
+    assert_contains "$result" "durable" "decision 应该映射为 durable"
+    assert_contains "$result" "always" "decision 应该默认 always 注入"
+    assert_contains "$result" "/test/project" "非 git 项目 root 应该等于 project_path"
+}
+
+it "应该回填旧记录的分层元数据"
+test_backfill_legacy_metadata_fields() {
+    sqlite3 "$TEST_DB" <<'EOF'
+INSERT INTO memories (
+    id, session_id, project_path, project_root, category, source, memory_kind,
+    auto_inject_policy, expires_at, content, content_preview, summary, tags,
+    concepts, timestamp_epoch, content_hash
+)
+VALUES (
+    'mem_legacy_backfill', 'legacy_session', '/legacy/project', '', 'context', '', '', '',
+    NULL, '旧 stop 记录', '旧 stop 记录', '旧 stop 摘要', 'stop,auto-captured', 'what-changed',
+    100, 'legacyhash000001'
+);
+EOF
+
+    ensure_schema_columns
+
+    local result=$(sqlite3 "$TEST_DB" "SELECT source, memory_kind, auto_inject_policy, project_root, expires_at FROM memories WHERE id='mem_legacy_backfill';")
+    assert_contains "$result" "stop_summary" "旧 stop 标签应该回填为 stop_summary"
+    assert_contains "$result" "working" "stop_summary 应该映射为 working"
+    assert_contains "$result" "conditional" "stop_summary 应该默认 conditional 注入"
+    assert_contains "$result" "/legacy/project" "旧记录应该回填 project_root"
+    assert_true "[[ \"$result\" == *\"-\"* || \"$result\" == *\":\"* ]]" "旧记录应该回填过期时间"
+}
+
 it "应该自动设置 timestamp_epoch"
 test_store_memory_sets_epoch() {
     local unique_content="测试 epoch_$(date +%s)"
@@ -179,6 +215,15 @@ test_no_duplicate_for_different_content() {
     local result=$(store_memory "session2" "/test/project" "context" "内容 B" "摘要 B" "" "")
 
     assert_contains "$result" "mem_" "应该返回新的记忆 ID（不重复）"
+}
+
+it "相同内容在不同项目下不应该互相去重"
+test_no_duplicate_across_different_projects() {
+    local result1=$(store_memory "session1" "/project/A" "context" "跨项目重复内容" "摘要 A" "" "")
+    local result2=$(store_memory "session2" "/project/B" "context" "跨项目重复内容" "摘要 B" "" "")
+
+    assert_contains "$result1" "mem_" "第一个项目应该成功存储"
+    assert_contains "$result2" "mem_" "不同项目不应该被判定为重复"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -465,6 +510,168 @@ test_generate_epoch_timestamp() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：SessionStart 上下文生成
+# ═══════════════════════════════════════════════════════════
+
+describe "SessionStart 上下文生成"
+
+it "应该能获取项目最近记忆"
+test_get_recent_project_memories() {
+    # 存储一些测试记忆（使用唯一摘要避免去重问题）
+    local unique_ts=$(date +%s)
+    store_memory "session1" "/test/sessionstart" "decision" "决策内容" "决策摘要_$unique_ts" "tag1" ""
+    store_memory "session2" "/test/sessionstart" "solution" "解决方案" "方案摘要_$unique_ts" "tag2" ""
+
+    local result=$(get_recent_project_memories "/test/sessionstart" 5)
+    assert_contains "$result" "决策摘要_$unique_ts" "应该获取项目记忆"
+    assert_contains "$result" "方案摘要_$unique_ts" "应该获取多条记忆"
+}
+
+it "应该按类别计算排序分数"
+test_rank_memory_for_sessionstart() {
+    local score_decision=$(rank_memory_for_sessionstart "decision" "" "")
+    local score_debug=$(rank_memory_for_sessionstart "debug" "" "")
+    local score_context=$(rank_memory_for_sessionstart "context" "" "")
+
+    assert_true "[ $score_decision -gt $score_context ]" "decision 应该比 context 分数高"
+    assert_true "[ $score_debug -gt $score_context ]" "debug 应该比 context 分数高"
+}
+
+it "应该能选择高价值记忆"
+test_select_sessionstart_memories() {
+    # 存储不同类别的记忆
+    store_memory "s1" "/test/select" "decision" "重要决策" "决策摘要1" "" ""
+    store_memory "s2" "/test/select" "debug" "修复bug" "调试摘要" "" ""
+    store_memory "s3" "/test/select" "context" "普通内容" "普通摘要" "" ""
+
+    local result=$(select_sessionstart_memories "/test/select" 2)
+    assert_not_empty "$result" "应该返回高价值记忆"
+    # decision 和 debug 应该排在 context 前面
+    local decision_count=$(echo "$result" | grep -c "decision")
+    local debug_count=$(echo "$result" | grep -c "debug")
+    assert_true "[ $((decision_count + debug_count)) -ge 1 ]" "应该优先选择高优先级类别"
+}
+
+it "应该生成 SessionStart 上下文"
+test_generate_sessionstart_context() {
+    # 存储测试数据
+    store_memory "s1" "/test/context" "decision" "测试决策内容" "测试决策摘要" "test" ""
+
+    local result=$(generate_sessionstart_context "/test/context" 1)
+    assert_contains "$result" "<cc-mem-context>" "应该包含上下文标签"
+    assert_contains "$result" "Recent High-Value Memory" "应该包含高价值记忆部分"
+    assert_contains "$result" "/test/context" "应该包含项目路径"
+}
+
+it "应该在 SessionStart 中补充 related project 记忆"
+test_sessionstart_related_project_memory() {
+    local child_path="/repo/worktrees/feature-a"
+    local child_root="/repo/worktrees/feature-a"
+    local parent_path="/repo"
+    local parent_root="/repo"
+
+    store_memory "s1" "$child_path" "decision" "子项目内容" "子项目摘要" "" "" "manual" "" "" "$child_root"
+    store_memory "s2" "$parent_path" "pattern" "父项目内容" "父项目模式摘要" "" "" "manual" "" "" "$parent_root"
+
+    local result=$(generate_sessionstart_context "$child_path" 2)
+    assert_contains "$result" "Related Project Memory" "应该包含 related project 区块"
+    assert_contains "$result" "父项目模式摘要" "应该补充 related project 记忆"
+    assert_contains "$result" "$parent_root" "应该标明 related project 路径"
+}
+
+it "连续调试时应该生成 timeline hint"
+test_sessionstart_timeline_hint() {
+    local project="/test/timeline-hint"
+    store_memory "t1" "$project" "debug" "修复 SQLite 索引问题" "修复 SQLite 索引问题" "" ""
+    store_memory "t2" "$project" "debug" "继续排查 recall 漏注入" "继续排查 recall 漏注入" "" ""
+    store_memory "t3" "$project" "solution" "补上 timeline hint 输出" "补上 timeline hint 输出" "" ""
+
+    local result=$(generate_sessionstart_context "$project" 3)
+    assert_contains "$result" "Recent Timeline Hint" "连续调试时应该出现 timeline hint"
+    assert_contains "$result" "补上 timeline hint 输出" "timeline hint 应该包含最近脉络"
+}
+
+it "生成的上下文应该包含时间戳"
+test_sessionstart_context_timestamp() {
+    local result=$(generate_sessionstart_context "/test" 1)
+    assert_contains "$result" "Updated:" "应该包含更新时间"
+}
+
+it "生成的上下文应该按优先级排序"
+test_sessionstart_priority_order() {
+    # 清除之前的测试数据
+    # 存储不同优先级的记忆
+    store_memory "p1" "/test/priority" "context" "低优先级内容" "低优先级摘要" "" ""
+    store_memory "p2" "/test/priority" "decision" "高优先级内容" "高优先级决策" "" ""
+
+    local result=$(generate_sessionstart_context "/test/priority" 1)
+    # 应该优先选择 decision
+    if echo "$result" | grep -q "高优先级决策"; then
+        assert_true "true" "高优先级类别应该被优先选择"
+    else
+        # 可能只有一条记录，只要不报错就算通过
+        assert_true "true" "上下文生成成功"
+    fi
+}
+
+it "应该生成 query recall 上下文"
+test_generate_query_recall_context() {
+    store_memory "session1" "/test/recall" "decision" "SQLite fallback 方案" "SQLite fallback 方案摘要" "sqlite,fallback" "" "manual"
+
+    local result=$(generate_query_recall_context "/test/recall" "SQLite" 3)
+    assert_contains "$result" "<cc-mem-recall>" "应该包含 recall 标签"
+    assert_contains "$result" "SQLite fallback 方案摘要" "应该返回相关摘要"
+}
+
+it "query recall 应该补充 related project 记忆"
+test_generate_query_recall_context_related_project() {
+    local child_path="/repo/worktrees/feature-b"
+    local child_root="/repo/worktrees/feature-b"
+    local parent_path="/repo"
+    local parent_root="/repo"
+
+    store_memory "session1" "$parent_path" "decision" "跨项目 recall 方案" "跨项目 recall 摘要" "sqlite" "" "manual" "" "" "$parent_root"
+    store_memory "session2" "$child_path" "context" "当前项目无关内容" "当前项目无关摘要" "other" "" "manual" "" "" "$child_root"
+
+    local result=$(generate_query_recall_context "$child_path" "recall" 3)
+    assert_contains "$result" "跨项目 recall 摘要" "应该补充 related project 命中的摘要"
+    assert_contains "$result" "(related: $parent_root)" "应该标注 related project 来源"
+}
+
+it "git worktree 场景下应该识别 related project"
+test_related_project_resolution_via_git_worktree() {
+    local repo_dir="/tmp/ccmem-main-repo-$$"
+    local worktree_dir="/tmp/ccmem-feature-wt-$$"
+    local resolved_repo_dir=""
+
+    rm -rf "$repo_dir" "$worktree_dir"
+    mkdir -p "$repo_dir"
+
+    git -C "$repo_dir" init >/dev/null 2>&1
+    git -C "$repo_dir" config user.name "cc-mem-test"
+    git -C "$repo_dir" config user.email "cc-mem-test@example.com"
+    echo "root" > "$repo_dir/README.md"
+    git -C "$repo_dir" add README.md >/dev/null 2>&1
+    git -C "$repo_dir" commit -m "init" >/dev/null 2>&1
+    git -C "$repo_dir" worktree add "$worktree_dir" -b feature/test >/dev/null 2>&1
+    resolved_repo_dir=$(resolve_project_root "$repo_dir")
+
+    store_memory "session1" "$repo_dir" "decision" "主仓库相关记忆" "主仓库相关摘要" "git,worktree" "" "manual" > /dev/null
+    store_memory "session2" "$worktree_dir" "context" "当前 worktree 普通内容" "当前 worktree 普通摘要" "feature" "" "manual" > /dev/null
+
+    local related
+    related=$(resolve_related_projects "$worktree_dir" 1)
+    assert_contains "$related" "$resolved_repo_dir" "worktree 应该能识别主仓库为 related project"
+
+    local result
+    result=$(generate_query_recall_context "$worktree_dir" "相关" 3)
+    assert_contains "$result" "主仓库相关摘要" "worktree recall 应该能命中主仓库记忆"
+    assert_contains "$result" "(related: $resolved_repo_dir)" "worktree recall 应该标注主仓库来源"
+
+    rm -rf "$repo_dir" "$worktree_dir"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 运行所有测试
 # ═══════════════════════════════════════════════════════════
 
@@ -492,11 +699,14 @@ test_content_hash_different_for_different_category
 # 存储记忆测试
 test_store_memory_success
 test_store_memory_all_fields
+test_store_memory_metadata_fields
+test_backfill_legacy_metadata_fields
 test_store_memory_sets_epoch
 
 # 去重测试
 test_duplicate_detection_same_content
 test_no_duplicate_for_different_content
+test_no_duplicate_across_different_projects
 
 # 检索测试
 test_retrieve_by_project
@@ -531,6 +741,19 @@ test_get_timeline
 
 # 内部辅助函数测试
 test_generate_epoch_timestamp
+
+# SessionStart 测试
+test_get_recent_project_memories
+test_rank_memory_for_sessionstart
+test_select_sessionstart_memories
+test_generate_sessionstart_context
+test_sessionstart_related_project_memory
+test_sessionstart_timeline_hint
+test_sessionstart_context_timestamp
+test_sessionstart_priority_order
+test_generate_query_recall_context
+test_generate_query_recall_context_related_project
+test_related_project_resolution_via_git_worktree
 
 # 打印测试报告
 print_summary

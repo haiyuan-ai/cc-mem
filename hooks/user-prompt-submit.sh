@@ -28,8 +28,23 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 # 获取项目路径
-PROJECT_PATH="${PWD}"
+PROJECT_PATH=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+if [ -z "$PROJECT_PATH" ]; then
+    PROJECT_PATH="${PWD}"
+fi
 echo "[user-prompt-submit] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
+
+USER_PROMPT=""
+if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
+    USER_PROMPT=$(echo "$INPUT" | jq -r '
+        .prompt // .user_prompt // .text // .query //
+        (if (.message? | type) == "string" then .message
+         elif (.message.content? | type) == "string" then .message.content
+         elif (.message.content? | type) == "array" then ([.message.content[]? | select(.type == "text") | .text] | join(" "))
+         else empty end) // empty
+    ' 2>/dev/null)
+fi
+echo "[user-prompt-submit] $(date): USER_PROMPT length=${#USER_PROMPT}" >> "$DEBUG_LOG"
 
 # 检查是否有累积的日志
 LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
@@ -58,15 +73,22 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         -c "$CATEGORY" \
         -s "$SESSION_ID" \
         -t "$TAGS" \
-        2>/dev/null || true
+        --source "user_prompt_submit" \
+        >/dev/null 2>&1 || true
 
     # 清空日志
     > "$LOG_FILE"
-
-    echo "[CC-Mem] 已保存会话记忆"
     echo "[user-prompt-submit] $(date): Memory saved" >> "$DEBUG_LOG"
 else
     echo "[user-prompt-submit] $(date): No log file or empty" >> "$DEBUG_LOG"
+fi
+
+if [ -n "$USER_PROMPT" ] && [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
+    source "$PLUGIN_DIR/lib/sqlite.sh" 2>/dev/null || true
+    recall_context=$(generate_query_recall_context "$PROJECT_PATH" "$USER_PROMPT" 3 2>/dev/null || true)
+    if [ -n "$recall_context" ]; then
+        echo "$recall_context"
+    fi
 fi
 
 exit 0

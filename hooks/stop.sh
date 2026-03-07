@@ -204,6 +204,7 @@ EOF
             -c "$CATEGORY" \
             -s "$SESSION_ID" \
             -t "stop,auto-captured" \
+            --source "stop_summary" \
             --concepts "what-changed" \
             2>/dev/null || true
 
@@ -234,6 +235,7 @@ EOF
             -c "context" \
             -s "$SESSION_ID" \
             -t "stop,final-response" \
+            --source "stop_final_response" \
             --concepts "what-changed" \
             2>/dev/null || true
 

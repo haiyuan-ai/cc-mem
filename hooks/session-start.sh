@@ -58,20 +58,6 @@ if command -v update_project_access &> /dev/null; then
 fi
 
 # 注入相关记忆（输出到 stdout，会被 Claude Code 读取）
-echo "=== CC-Mem: 加载项目记忆 ==="
-
-# 基于项目路径检索记忆
 if [ -f "$CLI" ]; then
-    memories=$("$CLI" search -p "$PROJECT_PATH" -l 5 2>/dev/null || true)
-    if [ -n "$memories" ]; then
-        echo ""
-        echo "找到以下相关记忆："
-        echo "$memories"
-        echo ""
-    fi
+    "$CLI" sessionstart -p "$PROJECT_PATH" -l 3 2>/dev/null || true
 fi
-
-# 输出会话信息
-echo "会话 ID: $SESSION_ID"
-echo "项目路径：$PROJECT_PATH"
-echo "================================"

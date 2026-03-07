@@ -35,6 +35,7 @@ Claude Code 轻量级记忆管理系统
 
 - **自动捕获**：会话结束时自动捕获关键信息
 - **实时捕获**：工具使用后累积操作，用户输入前批量保存
+- **分层记忆**：按来源、生命周期和自动注入资格组织记忆
 - **语义压缩**：使用 LLM 或本地规则压缩会话内容
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：基于项目路径、标签、全文检索（三层检索）
@@ -119,7 +120,7 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
       "repo": "haiyuan-ai/cc-mem"
     },
     "installLocation": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
-    "lastUpdated": "2026-03-06T00:00:00.000Z"
+    "lastUpdated": "2026-03-07T00:00:00.000Z"
   }
 }
 ```
@@ -133,9 +134,9 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
   {
     "scope": "user",
     "installPath": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
-    "version": "1.4.0",
-    "installedAt": "2026-03-06T00:00:00.000Z",
-    "lastUpdated": "2026-03-06T00:00:00.000Z",
+    "version": "1.5.0",
+    "installedAt": "2026-03-07T00:00:00.000Z",
+    "lastUpdated": "2026-03-07T00:00:00.000Z",
     "gitCommitSha": "COMMIT_SHA_HERE"
   }
 ]
@@ -234,6 +235,9 @@ ccmem-cli.sh export -o "~/exports"
 
 # 生成项目上下文
 ccmem-cli.sh context
+
+# 生成 SessionStart 预热上下文
+ccmem-cli.sh sessionstart -p "/path/to/project" -l 3
 
 # 列出所有项目
 ccmem-cli.sh projects
@@ -355,6 +359,19 @@ ccmem-cli.sh context -p "/path/to/project"
 ccmem-cli.sh context -o "/path/to/CLAUDE.md"
 ```
 
+#### sessionstart - 生成结构化启动上下文
+
+```bash
+# 生成当前项目的 SessionStart 预热上下文
+ccmem-cli.sh sessionstart -p "/path/to/project" -l 3
+```
+
+输出特点：
+- 只输出结构化 `<cc-mem-context>` 块
+- 默认优先注入 durable / conditional 记忆
+- 结果不足时会补 1 条 related project 记忆
+- 连续 debug / 连续决策链会自动附加 timeline hint
+
 #### projects - 列出所有项目
 
 ```bash
@@ -473,6 +490,7 @@ done < notes.txt
 3. **概念标注** - 使用 `--concepts` 标注概念类型
 4. **定期导出** - 定期导出记忆备份
 5. **项目隔离** - 不同项目使用不同路径
+6. **区分长期与临时记忆** - 决策/方案适合 durable，自动捕获流水更适合 temporary
 
 ---
 
@@ -503,7 +521,12 @@ done < notes.txt
 | session_id | TEXT | 会话 ID |
 | timestamp | DATETIME | 时间戳 |
 | project_path | TEXT | 项目路径 |
+| project_root | TEXT | 稳定项目根路径（git root 或当前路径） |
 | category | TEXT | 类别 |
+| source | TEXT | 来源（manual/post_tool_use/user_prompt_submit/stop_summary/...） |
+| memory_kind | TEXT | 分层类型（durable/working/temporary） |
+| auto_inject_policy | TEXT | 自动注入策略（always/conditional/manual_only/never） |
+| expires_at | TEXT | 自动注入过期时间 |
 | content | TEXT | 内容 |
 | summary | TEXT | 摘要 |
 | tags | TEXT | 标签（逗号分隔） |
@@ -516,6 +539,7 @@ done < notes.txt
 | start_time | DATETIME | 开始时间 |
 | end_time | DATETIME | 结束时间 |
 | project_path | TEXT | 项目路径 |
+| project_root | TEXT | 项目根路径 |
 | message_count | INTEGER | 消息数 |
 | summary | TEXT | 会话摘要 |
 
@@ -526,8 +550,10 @@ done < notes.txt
 在每次会话启动时自动执行：
 
 1. 记录会话开始
-2. 加载相关项目记忆
-3. 注入到当前会话上下文
+2. 按 `project_root` 加载当前项目高价值记忆
+3. 必要时补 1 条 related project 记忆
+4. 连续 debug / 连续决策链时追加 timeline hint
+5. 输出结构化 `<cc-mem-context>` 注入块
 
 ### SessionEnd Hook
 
@@ -548,10 +574,12 @@ done < notes.txt
 
 ### UserPromptSubmit Hook
 
-在用户输入提示前批量保存记忆：
+在用户输入提示前批量保存记忆，并执行轻量 recall：
 
 - **自动分类**：根据内容识别 debug/solution/decision/context
 - **批量保存**：将累积的操作记录一次性保存到数据库
+- **Query Recall**：基于当前 prompt 检索 2-3 条相关摘要
+- **中文支持**：中文查询优先 FTS，结果不足时回退到 LIKE
 - **会话兜底**：SessionEnd Hook 保存剩余记录
 
 **数据安全性提升**：从"仅 session-end 兜底"到"三层捕获机制"，会话意外中断时最多丢失最近 5 次操作。
@@ -585,7 +613,7 @@ ccmem-cli.sh search -q "database schema design" -l 10
 
 ### 项目隔离
 
-记忆自动按项目路径隔离，检索时优先匹配当前项目。
+记忆默认按 `project_root` 隔离；在 Git worktree 或父子项目场景下，会受控补充 related project 记忆，而不是做全局跨项目混入。
 
 ### 标签系统
 
@@ -594,6 +622,16 @@ ccmem-cli.sh search -q "database schema design" -l 10
 ```bash
 ccmem-cli.sh capture -t "important,architecture,database"
 ```
+
+### 记忆分层
+
+默认映射：
+
+- `manual + decision/solution/pattern` -> `durable + always`
+- `manual + debug/context` -> `working + conditional`
+- `user_prompt_submit / stop_summary` -> `working + conditional`
+- `post_tool_use / session_end` -> `temporary + never`
+- `stop_final_response` -> `temporary + manual_only`
 
 ---
 

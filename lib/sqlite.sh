@@ -23,6 +23,248 @@ contains_cjk() {
     [[ "$value" =~ [一-龥] ]]
 }
 
+# 去掉自动注入的上下文块，避免被再次存回记忆库。
+strip_injected_context_blocks() {
+    local content="$1"
+
+    if [ -z "$content" ]; then
+        echo ""
+        return
+    fi
+
+    if command -v perl >/dev/null 2>&1; then
+        printf "%s" "$content" | perl -0777 -pe 's/<cc-mem-context>[\s\S]*?<\/cc-mem-context>//g; s/<cc-mem-recall>[\s\S]*?<\/cc-mem-recall>//g;'
+        return
+    fi
+
+    printf "%s\n" "$content" | awk '
+    /<cc-mem-context>/ { skip=1; next }
+    /<\/cc-mem-context>/ { skip=0; next }
+    /<cc-mem-recall>/ { skip=1; next }
+    /<\/cc-mem-recall>/ { skip=0; next }
+    !skip { print }
+    '
+}
+
+# 解析稳定的项目根路径，优先使用 git root。
+resolve_project_root() {
+    local project_path="$1"
+    local git_root=""
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    if [ -d "$project_path" ] && command -v git >/dev/null 2>&1; then
+        git_root=$(git -C "$project_path" rev-parse --show-toplevel 2>/dev/null || true)
+    fi
+
+    if [ -n "$git_root" ]; then
+        echo "$git_root"
+    else
+        echo "$project_path"
+    fi
+}
+
+resolve_git_common_dir() {
+    local project_path="$1"
+    local common_dir=""
+
+    if [ -z "$project_path" ] || [ ! -d "$project_path" ] || ! command -v git >/dev/null 2>&1; then
+        return
+    fi
+
+    common_dir=$(git -C "$project_path" rev-parse --git-common-dir 2>/dev/null || true)
+    [ -z "$common_dir" ] && return
+
+    if [[ "$common_dir" = /* ]]; then
+        [ -d "$common_dir" ] && (cd "$common_dir" 2>/dev/null && pwd)
+        return
+    fi
+
+    (cd "$project_path" 2>/dev/null && cd "$common_dir" 2>/dev/null && pwd)
+}
+
+infer_memory_kind() {
+    local source="$1"
+    local category="$2"
+
+    case "$source" in
+        manual)
+            case "$category" in
+                decision|solution|pattern) echo "durable" ;;
+                *) echo "working" ;;
+            esac
+            ;;
+        user_prompt_submit|stop_summary) echo "working" ;;
+        stop_final_response|post_tool_use|session_end) echo "temporary" ;;
+        *) echo "working" ;;
+    esac
+}
+
+infer_auto_inject_policy() {
+    local source="$1"
+    local category="$2"
+
+    case "$source" in
+        manual)
+            case "$category" in
+                decision|solution|pattern) echo "always" ;;
+                *) echo "conditional" ;;
+            esac
+            ;;
+        user_prompt_submit|stop_summary) echo "conditional" ;;
+        stop_final_response) echo "manual_only" ;;
+        post_tool_use|session_end) echo "never" ;;
+        *) echo "conditional" ;;
+    esac
+}
+
+generate_future_sqlite_timestamp() {
+    local days="$1"
+
+    if date -u -d "+${days} days" +"%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+        date -u -d "+${days} days" +"%Y-%m-%d %H:%M:%S"
+    elif date -u -v+"${days}"d +"%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+        date -u -v+"${days}"d +"%Y-%m-%d %H:%M:%S"
+    else
+        echo ""
+    fi
+}
+
+infer_expires_at() {
+    local source="$1"
+    local memory_kind="$2"
+
+    if [ "$memory_kind" != "temporary" ]; then
+        case "$source" in
+            stop_summary) generate_future_sqlite_timestamp 14 ;;
+            *) echo "" ;;
+        esac
+        return
+    fi
+
+    case "$source" in
+        post_tool_use|session_end) generate_future_sqlite_timestamp 3 ;;
+        stop_final_response) generate_future_sqlite_timestamp 7 ;;
+        *) echo "" ;;
+    esac
+}
+
+backfill_project_roots() {
+    local path=""
+    local root=""
+    local path_escaped=""
+    local root_escaped=""
+
+    sqlite3 -noheader "$MEMORY_DB" "SELECT DISTINCT project_path FROM memories WHERE project_path IS NOT NULL AND project_path != '' UNION SELECT DISTINCT project_path FROM sessions WHERE project_path IS NOT NULL AND project_path != '';" | while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        root=$(resolve_project_root "$path")
+        path_escaped=$(sql_escape "$path")
+        root_escaped=$(sql_escape "$root")
+
+        sqlite3 "$MEMORY_DB" <<EOF
+UPDATE memories
+SET project_root = '$root_escaped'
+WHERE project_path = '$path_escaped' AND (project_root IS NULL OR project_root = '' OR project_root = project_path);
+
+UPDATE sessions
+SET project_root = '$root_escaped'
+WHERE project_path = '$path_escaped' AND (project_root IS NULL OR project_root = '' OR project_root = project_path);
+EOF
+    done
+}
+
+backfill_memory_metadata() {
+    sqlite3 "$MEMORY_DB" <<'EOF'
+UPDATE memories
+SET source = CASE
+    WHEN source IS NOT NULL AND source != '' AND source != 'manual' THEN source
+    WHEN tags LIKE '%final-response%' THEN 'stop_final_response'
+    WHEN tags LIKE '%session-end%' THEN 'session_end'
+    WHEN tags LIKE '%stop%' THEN 'stop_summary'
+    WHEN tags LIKE '%auto-captured%' THEN 'post_tool_use'
+    ELSE COALESCE(NULLIF(source, ''), 'manual')
+END;
+
+UPDATE memories
+SET memory_kind = CASE
+    WHEN source = 'manual' AND category IN ('decision', 'solution', 'pattern') THEN 'durable'
+    WHEN source IN ('user_prompt_submit', 'stop_summary') THEN 'working'
+    WHEN source IN ('stop_final_response', 'post_tool_use', 'session_end') THEN 'temporary'
+    ELSE 'working'
+END;
+
+UPDATE memories
+SET auto_inject_policy = CASE
+    WHEN source = 'manual' AND category IN ('decision', 'solution', 'pattern') THEN 'always'
+    WHEN source IN ('manual', 'user_prompt_submit', 'stop_summary') THEN 'conditional'
+    WHEN source = 'stop_final_response' THEN 'manual_only'
+    WHEN source IN ('post_tool_use', 'session_end') THEN 'never'
+    ELSE 'conditional'
+END;
+
+UPDATE memories
+SET expires_at = CASE
+    WHEN expires_at IS NOT NULL AND expires_at != '' THEN expires_at
+    WHEN source = 'stop_summary' THEN datetime(COALESCE(timestamp, CURRENT_TIMESTAMP), '+14 days')
+    WHEN source IN ('post_tool_use', 'session_end') THEN datetime(COALESCE(timestamp, CURRENT_TIMESTAMP), '+3 days')
+    WHEN source = 'stop_final_response' THEN datetime(COALESCE(timestamp, CURRENT_TIMESTAMP), '+7 days')
+    ELSE NULL
+END;
+EOF
+}
+
+ensure_column_exists() {
+    local table_name="$1"
+    local column_name="$2"
+    local column_def="$3"
+    local exists
+
+    exists=$(sqlite3 "$MEMORY_DB" "PRAGMA table_info($table_name);" | awk -F'|' -v col="$column_name" '$2 == col { print 1 }')
+    if [ -z "$exists" ]; then
+        sqlite3 "$MEMORY_DB" "ALTER TABLE $table_name ADD COLUMN $column_def;"
+    fi
+}
+
+ensure_schema_columns() {
+    ensure_column_exists "memories" "source" "source TEXT DEFAULT 'manual'"
+    ensure_column_exists "memories" "memory_kind" "memory_kind TEXT DEFAULT 'working'"
+    ensure_column_exists "memories" "auto_inject_policy" "auto_inject_policy TEXT DEFAULT 'conditional'"
+    ensure_column_exists "memories" "project_root" "project_root TEXT"
+    ensure_column_exists "memories" "expires_at" "expires_at TEXT"
+    ensure_column_exists "sessions" "project_root" "project_root TEXT"
+
+    sqlite3 "$MEMORY_DB" <<EOF
+CREATE INDEX IF NOT EXISTS idx_memories_content_hash_scope ON memories(content_hash, project_root);
+CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source);
+CREATE INDEX IF NOT EXISTS idx_memories_memory_kind ON memories(memory_kind);
+CREATE INDEX IF NOT EXISTS idx_memories_auto_inject_policy ON memories(auto_inject_policy);
+CREATE INDEX IF NOT EXISTS idx_memories_project_root ON memories(project_root);
+CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_root ON sessions(project_root);
+EOF
+
+    sqlite3 "$MEMORY_DB" <<EOF
+UPDATE memories
+SET source = COALESCE(NULLIF(source, ''), 'manual'),
+    memory_kind = COALESCE(NULLIF(memory_kind, ''), 'working'),
+    auto_inject_policy = COALESCE(NULLIF(auto_inject_policy, ''), 'conditional'),
+    project_root = COALESCE(NULLIF(project_root, ''), project_path)
+WHERE source IS NULL OR source = ''
+   OR memory_kind IS NULL OR memory_kind = ''
+   OR auto_inject_policy IS NULL OR auto_inject_policy = ''
+   OR project_root IS NULL OR project_root = '';
+
+UPDATE sessions
+SET project_root = COALESCE(NULLIF(project_root, ''), project_path)
+WHERE project_root IS NULL OR project_root = '';
+EOF
+
+    backfill_project_roots
+    backfill_memory_metadata
+}
+
 # 统计带表头的 sqlite 输出中实际数据行数量。
 count_result_rows() {
     local results="$1"
@@ -41,7 +283,12 @@ CREATE TABLE IF NOT EXISTS memories (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     timestamp_epoch INTEGER,
     project_path TEXT,
+    project_root TEXT,
     category TEXT CHECK(category IN ('decision', 'solution', 'pattern', 'debug', 'context')),
+    source TEXT DEFAULT 'manual',
+    memory_kind TEXT DEFAULT 'working',
+    auto_inject_policy TEXT DEFAULT 'conditional',
+    expires_at TEXT,
     content_hash TEXT,
     concepts TEXT,
     content TEXT NOT NULL,
@@ -61,6 +308,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     end_time DATETIME,
     project_path TEXT,
+    project_root TEXT,
     message_count INTEGER DEFAULT 0,
     summary TEXT,
     status TEXT DEFAULT 'active'
@@ -134,6 +382,7 @@ CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
 END;
 
 EOF
+    ensure_schema_columns
     echo "Database initialized at $MEMORY_DB"
 }
 
@@ -146,6 +395,14 @@ store_memory() {
     local summary="$5"
     local tags="$6"
     local concepts="$7"
+    local source="${8:-manual}"
+    local memory_kind="$9"
+    local auto_inject_policy="${10}"
+    local project_root="${11}"
+    local expires_at="${12}"
+
+    content=$(strip_injected_context_blocks "$content")
+    summary=$(strip_injected_context_blocks "$summary")
 
     # 拒绝空内容和纯空白内容，避免写入无效记忆。
     if [ -z "$(echo "$content" | tr -d '[:space:]')" ]; then
@@ -167,9 +424,39 @@ store_memory() {
     local tags_escaped
     local concepts_escaped
     local content_hash_escaped
+    local source_escaped
+    local memory_kind_escaped
+    local auto_inject_policy_escaped
+    local project_root_escaped
+    local expires_at_escaped
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    if [ -z "$project_root" ]; then
+        project_root=$(resolve_project_root "$project_path")
+    fi
+
+    if [ -z "$memory_kind" ]; then
+        memory_kind=$(infer_memory_kind "$source" "$category")
+    fi
+
+    if [ -z "$auto_inject_policy" ]; then
+        auto_inject_policy=$(infer_auto_inject_policy "$source" "$category")
+    fi
+
+    if [ -z "$expires_at" ]; then
+        expires_at=$(infer_expires_at "$source" "$memory_kind")
+    fi
+
+    if [ -z "$summary" ]; then
+        summary="${content:0:100}..."
+    fi
 
     # 检查是否重复
-    local existing_id=$(check_duplicate_memory "$content_hash")
+    local existing_id
+    existing_id=$(check_duplicate_memory "$content_hash" "$project_root")
     if [ -n "$existing_id" ]; then
         echo "duplicate:$existing_id"
         return
@@ -185,10 +472,25 @@ store_memory() {
     tags_escaped=$(sql_escape "$tags")
     concepts_escaped=$(sql_escape "$concepts")
     content_hash_escaped=$(sql_escape "$content_hash")
+    source_escaped=$(sql_escape "$source")
+    memory_kind_escaped=$(sql_escape "$memory_kind")
+    auto_inject_policy_escaped=$(sql_escape "$auto_inject_policy")
+    project_root_escaped=$(sql_escape "$project_root")
+    expires_at_escaped=$(sql_escape "$expires_at")
 
     sqlite3 "$MEMORY_DB" <<EOF
-INSERT INTO memories (id, session_id, project_path, category, content, content_preview, summary, tags, concepts, timestamp_epoch, content_hash)
-VALUES ('$id_escaped', '$session_id_escaped', '$project_path_escaped', '$category_escaped', '$content_escaped', '$content_preview_escaped', '$summary_escaped', '$tags_escaped', '$concepts_escaped', $epoch, '$content_hash_escaped');
+INSERT INTO memories (
+    id, session_id, project_path, project_root, category, source, memory_kind,
+    auto_inject_policy, expires_at, content, content_preview, summary, tags,
+    concepts, timestamp_epoch, content_hash
+)
+VALUES (
+    '$id_escaped', '$session_id_escaped', '$project_path_escaped', '$project_root_escaped',
+    '$category_escaped', '$source_escaped', '$memory_kind_escaped',
+    '$auto_inject_policy_escaped', NULLIF('$expires_at_escaped', ''),
+    '$content_escaped', '$content_preview_escaped', '$summary_escaped',
+    '$tags_escaped', '$concepts_escaped', $epoch, '$content_hash_escaped'
+);
 EOF
     local exit_code=$?
 
@@ -422,7 +724,8 @@ get_memory() {
     memory_id_escaped=$(sql_escape "$memory_id")
 
     sqlite3 -header -column "$MEMORY_DB" <<EOF
-SELECT id, session_id, timestamp, project_path, category, content, summary, concepts, tags
+SELECT id, session_id, timestamp, project_path, project_root, category, source, memory_kind,
+       auto_inject_policy, expires_at, content, summary, concepts, tags
 FROM memories
 WHERE id = '$memory_id_escaped';
 EOF
@@ -460,14 +763,26 @@ EOF
 upsert_session() {
     local session_id="$1"
     local project_path="$2"
+    local project_root="$3"
     local session_id_escaped
     local project_path_escaped
+    local project_root_escaped
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    if [ -z "$project_root" ]; then
+        project_root=$(resolve_project_root "$project_path")
+    fi
+
     session_id_escaped=$(sql_escape "$session_id")
     project_path_escaped=$(sql_escape "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
 
     sqlite3 "$MEMORY_DB" <<EOF
-INSERT OR REPLACE INTO sessions (id, project_path, start_time, status)
-VALUES ('$session_id_escaped', '$project_path_escaped', CURRENT_TIMESTAMP, 'active');
+INSERT OR REPLACE INTO sessions (id, project_path, project_root, start_time, status)
+VALUES ('$session_id_escaped', '$project_path_escaped', '$project_root_escaped', CURRENT_TIMESTAMP, 'active');
 EOF
 }
 
@@ -513,7 +828,9 @@ EOF
 cleanup_old_memories() {
     local days="${1:-30}"
     sqlite3 "$MEMORY_DB" <<EOF
-DELETE FROM memories WHERE timestamp < datetime('now', '-$days days');
+DELETE FROM memories
+WHERE (expires_at IS NOT NULL AND expires_at != '' AND expires_at < datetime('now'))
+   OR timestamp < datetime('now', '-$days days');
 VACUUM;
 EOF
     echo "Cleaned up memories older than $days days"
@@ -777,6 +1094,7 @@ generate_content_hash() {
 # 检查内容是否已存在（通过哈希）
 check_duplicate_memory() {
     local content_hash="$1"
+    local project_root="$2"
     local content_hash_escaped
 
     if [ -z "$content_hash" ]; then
@@ -785,7 +1103,13 @@ check_duplicate_memory() {
     fi
 
     content_hash_escaped=$(sql_escape "$content_hash")
-    sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' LIMIT 1;"
+    if [ -n "$project_root" ]; then
+        local project_root_escaped
+        project_root_escaped=$(sql_escape "$project_root")
+        sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' AND project_root = '$project_root_escaped' LIMIT 1;"
+    else
+        sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' LIMIT 1;"
+    fi
 }
 
 # 生成唯一 ID（兼容 macOS 和 Linux）
@@ -802,4 +1126,518 @@ generate_id() {
     fi
 
     echo "mem_$(date +%s)_${random_str}"
+}
+
+# ═══════════════════════════════════════════════════════════
+# SessionStart 上下文生成
+# ═══════════════════════════════════════════════════════════
+
+# 获取项目下最近的记忆
+get_recent_project_memories() {
+    local project_path="$1"
+    local limit="${2:-12}"
+
+    if [ -z "$project_path" ]; then
+        return
+    fi
+
+    local project_root
+    local project_root_escaped
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
+FROM memories
+WHERE project_root = '$project_root_escaped'
+ORDER BY timestamp_epoch DESC
+LIMIT $limit;
+EOF
+}
+
+resolve_related_projects() {
+    local project_path="$1"
+    local limit="${2:-1}"
+    local project_root
+    local project_root_escaped
+    local current_common_dir=""
+    local candidate=""
+    local candidate_common_dir=""
+    local related_list=""
+    local related_count=0
+
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    current_common_dir=$(resolve_git_common_dir "$project_path")
+    if [ -n "$current_common_dir" ]; then
+        while IFS= read -r candidate; do
+            [ -z "$candidate" ] && continue
+            [ "$candidate" = "$project_root" ] && continue
+
+            candidate_common_dir=$(resolve_git_common_dir "$candidate")
+            if [ -n "$candidate_common_dir" ] && [ "$candidate_common_dir" = "$current_common_dir" ]; then
+                related_list="${related_list}${candidate}"$'\n'
+                related_count=$((related_count + 1))
+                if [ "$related_count" -ge "$limit" ]; then
+                    printf "%s" "$related_list"
+                    return
+                fi
+            fi
+        done < <(sqlite3 -noheader "$MEMORY_DB" "SELECT DISTINCT project_root FROM memories WHERE project_root IS NOT NULL AND project_root != '' UNION SELECT DISTINCT project_root FROM sessions WHERE project_root IS NOT NULL AND project_root != '';")
+    fi
+
+    sqlite3 -noheader "$MEMORY_DB" <<EOF
+SELECT DISTINCT project_root
+FROM memories
+WHERE project_root IS NOT NULL
+  AND project_root != ''
+  AND project_root != '$project_root_escaped'
+  AND (
+      project_root LIKE '$project_root_escaped/%'
+      OR '$project_root_escaped' LIKE project_root || '/%'
+  )
+ORDER BY
+  CASE WHEN '$project_root_escaped' LIKE project_root || '/%' THEN 1 ELSE 2 END,
+  LENGTH(project_root) ASC,
+  project_root ASC
+LIMIT $limit;
+EOF
+}
+
+# 计算记忆的 SessionStart 排序分数
+# 分数越高越重要
+rank_memory_for_sessionstart() {
+    local category="$1"
+    local tags="$2"
+    local concepts="$3"
+
+    local score=0
+
+    # 类别权重
+    case "$category" in
+        "decision") score=$((score + 100)) ;;
+        "debug") score=$((score + 90)) ;;
+        "solution") score=$((score + 80)) ;;
+        "pattern") score=$((score + 50)) ;;
+        "context") score=$((score + 20)) ;;
+    esac
+
+    # 有 concepts 加分
+    if [ -n "$concepts" ]; then
+        score=$((score + 10))
+    fi
+
+    echo "$score"
+}
+
+# 选择 SessionStart 的记忆（排序 + 去重）
+select_sessionstart_memories() {
+    local project_path="$1"
+    local limit="${2:-3}"
+    local project_root
+    local project_root_escaped
+
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    sqlite3 -separator '|' "$MEMORY_DB" <<EOF | awk -F'|' -v limit="$limit" '
+BEGIN { count = 0 }
+{
+    summary = $4
+    if (summary == "" || seen[summary]) next
+    seen[summary] = 1
+    print $0
+    count++
+    if (count >= limit) exit
+}'
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
+FROM memories
+WHERE project_root = '$project_root_escaped'
+  AND summary IS NOT NULL
+  AND summary != ''
+  AND auto_inject_policy IN ('always', 'conditional')
+  AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
+ORDER BY
+  CASE auto_inject_policy
+    WHEN 'always' THEN 4
+    WHEN 'conditional' THEN 3
+    WHEN 'manual_only' THEN 2
+    ELSE 1
+  END DESC,
+  CASE memory_kind
+    WHEN 'durable' THEN 3
+    WHEN 'working' THEN 2
+    ELSE 1
+  END DESC,
+  CASE category
+    WHEN 'decision' THEN 100
+    WHEN 'debug' THEN 90
+    WHEN 'solution' THEN 80
+    WHEN 'pattern' THEN 50
+    ELSE 20
+  END DESC,
+  CASE source
+    WHEN 'manual' THEN 5
+    WHEN 'stop_summary' THEN 4
+    WHEN 'user_prompt_submit' THEN 3
+    ELSE 1
+  END DESC,
+  timestamp_epoch DESC
+LIMIT 20;
+EOF
+}
+
+select_related_sessionstart_memories() {
+    local project_path="$1"
+    local limit="${2:-1}"
+    local related_roots
+    local related_root=""
+    local related_root_escaped
+
+    related_roots=$(resolve_related_projects "$project_path" "$limit")
+    related_root=$(printf "%s\n" "$related_roots" | head -1)
+    if [ -z "$related_root" ]; then
+        return
+    fi
+
+    related_root_escaped=$(sql_escape "$related_root")
+
+    sqlite3 -separator '|' "$MEMORY_DB" <<EOF | awk -F'|' '
+{
+    if ($4 == "" || seen[$4]) next
+    seen[$4] = 1
+    print $0
+}'
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, project_root
+FROM memories
+WHERE project_root = '$related_root_escaped'
+  AND summary IS NOT NULL
+  AND summary != ''
+  AND auto_inject_policy IN ('always', 'conditional')
+  AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
+ORDER BY
+  CASE auto_inject_policy
+    WHEN 'always' THEN 4
+    WHEN 'conditional' THEN 3
+    WHEN 'manual_only' THEN 2
+    ELSE 1
+  END DESC,
+  CASE memory_kind
+    WHEN 'durable' THEN 3
+    WHEN 'working' THEN 2
+    ELSE 1
+  END DESC,
+  CASE category
+    WHEN 'decision' THEN 100
+    WHEN 'debug' THEN 90
+    WHEN 'solution' THEN 80
+    WHEN 'pattern' THEN 50
+    ELSE 20
+  END DESC,
+  timestamp_epoch DESC
+LIMIT $limit;
+EOF
+}
+
+# 获取最近一次 stop summary
+get_last_stop_summary() {
+    local project_path="$1"
+
+    if [ -z "$project_path" ]; then
+        return
+    fi
+
+    local project_root
+    local project_root_escaped
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    # 查找最近一次 stop 状态会话的 summary
+    sqlite3 "$MEMORY_DB" <<EOF
+SELECT summary FROM sessions
+WHERE (project_root = '$project_root_escaped'
+   OR project_path = '$(sql_escape "$project_path")'
+   OR project_path LIKE '$(sql_escape "$project_path")/%')
+  AND status = 'stopped'
+  AND summary IS NOT NULL
+  AND summary != ''
+ORDER BY end_time DESC
+LIMIT 1;
+EOF
+}
+
+get_timeline_hint_candidates() {
+    local project_path="$1"
+    local limit="${2:-4}"
+    local project_root
+    local project_root_escaped
+
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT timestamp, category, summary
+FROM memories
+WHERE project_root = '$project_root_escaped'
+  AND summary IS NOT NULL
+  AND summary != ''
+  AND auto_inject_policy IN ('always', 'conditional')
+  AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
+ORDER BY timestamp_epoch DESC
+LIMIT $limit;
+EOF
+}
+
+should_include_timeline_hint() {
+    local project_path="$1"
+    local candidates
+    local debug_count=0
+    local categories=""
+    local last_session=""
+
+    candidates=$(get_timeline_hint_candidates "$project_path" 4)
+    [ -z "$candidates" ] && return 1
+
+    debug_count=$(printf "%s\n" "$candidates" | grep '|debug|' 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$debug_count" -ge 2 ]; then
+        return 0
+    fi
+
+    last_session=$(get_last_stop_summary "$project_path")
+    if printf "%s" "$last_session" | grep -Eq '继续|排查|回退|修复|验证'; then
+        return 0
+    fi
+
+    categories=$(printf "%s\n" "$candidates" | cut -d'|' -f2 | paste -sd ',' -)
+    if printf "%s" "$categories" | grep -Eq 'debug,solution|solution,debug|decision,pattern|pattern,decision'; then
+        return 0
+    fi
+
+    return 1
+}
+
+generate_timeline_hint() {
+    local project_path="$1"
+    local limit="${2:-3}"
+
+    get_timeline_hint_candidates "$project_path" "$limit" | awk -F'|' '
+    {
+        rows[NR] = sprintf("- [%s] %s", $2, $3)
+    }
+    END {
+        for (i = NR; i >= 1; i--) {
+            print rows[i]
+        }
+    }'
+}
+
+query_recall_memories_for_root() {
+    local project_root="$1"
+    local query="$2"
+    local limit="${3:-3}"
+    local query_escaped
+    local project_root_escaped
+
+    project_root_escaped=$(sql_escape "$project_root")
+    query_escaped=$(sql_escape "$query")
+
+    if contains_cjk "$query"; then
+        sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT id, category, summary, tags, source, project_root
+FROM memories
+WHERE project_root = '$project_root_escaped'
+  AND auto_inject_policy IN ('always', 'conditional')
+  AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
+  AND (
+      rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+      OR content LIKE '%${query_escaped}%'
+      OR summary LIKE '%${query_escaped}%'
+      OR tags LIKE '%${query_escaped}%'
+      OR concepts LIKE '%${query_escaped}%'
+  )
+ORDER BY
+  CASE auto_inject_policy WHEN 'always' THEN 4 WHEN 'conditional' THEN 3 ELSE 1 END DESC,
+  CASE memory_kind WHEN 'durable' THEN 3 WHEN 'working' THEN 2 ELSE 1 END DESC,
+  timestamp_epoch DESC
+LIMIT $limit;
+EOF
+        return
+    fi
+
+    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT id, category, summary, tags, source, project_root
+FROM memories
+WHERE project_root = '$project_root_escaped'
+  AND auto_inject_policy IN ('always', 'conditional')
+  AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
+  AND (
+      rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+      OR concepts LIKE '%${query_escaped}%'
+  )
+ORDER BY
+  CASE auto_inject_policy WHEN 'always' THEN 4 WHEN 'conditional' THEN 3 ELSE 1 END DESC,
+  CASE memory_kind WHEN 'durable' THEN 3 WHEN 'working' THEN 2 ELSE 1 END DESC,
+  timestamp_epoch DESC
+LIMIT $limit;
+EOF
+}
+
+select_query_recall_memories() {
+    local project_path="$1"
+    local query="$2"
+    local limit="${3:-3}"
+    local project_root
+    local primary_memories=""
+    local related_root=""
+    local related_memories=""
+    local current_count=0
+    local remaining=0
+
+    if [ -z "$query" ]; then
+        return
+    fi
+
+    project_root=$(resolve_project_root "$project_path")
+    primary_memories=$(query_recall_memories_for_root "$project_root" "$query" "$limit")
+    current_count=$(count_result_rows "$primary_memories")
+
+    if [ "$current_count" -lt "$limit" ]; then
+        remaining=$((limit - current_count))
+        related_root=$(resolve_related_projects "$project_path" 1 | head -1)
+        if [ -n "$related_root" ] && [ "$related_root" != "$project_root" ]; then
+            related_memories=$(query_recall_memories_for_root "$related_root" "$query" "$remaining")
+        fi
+    fi
+
+    {
+        printf "%s\n" "$primary_memories"
+        printf "%s\n" "$related_memories"
+    } | awk -F'|' -v limit="$limit" '
+BEGIN { count = 0 }
+{
+    if ($0 == "") next
+    if (seen[$3]) next
+    seen[$3] = 1
+    print $0
+    count++
+    if (count >= limit) exit
+}'
+}
+
+generate_query_recall_context() {
+    local project_path="$1"
+    local query="$2"
+    local limit="${3:-3}"
+    local recall_memories
+
+    recall_memories=$(select_query_recall_memories "$project_path" "$query" "$limit")
+    if [ -z "$recall_memories" ]; then
+        return
+    fi
+
+    echo "<cc-mem-recall>"
+    echo "Relevant project context for the current request (use only if relevant):"
+    echo "$recall_memories" | awk -F'|' -v current_root="$(resolve_project_root "$project_path")" '
+    {
+        if (seen[$3]) next
+        seen[$3] = 1
+        if ($6 != "" && $6 != current_root) {
+            printf("- [%s] %s (related: %s)\n", $2, $3, $6)
+        } else {
+            printf("- [%s] %s\n", $2, $3)
+        }
+    }'
+    echo "</cc-mem-recall>"
+}
+
+# 生成 SessionStart 上下文
+generate_sessionstart_context() {
+    local project_path="$1"
+    local limit="${2:-3}"
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    local timestamp
+    timestamp=$(format_iso8601)
+
+    # 获取高价值记忆
+    local high_value_memories
+    high_value_memories=$(select_sessionstart_memories "$project_path" "$limit")
+    local related_memories
+    related_memories=$(select_related_sessionstart_memories "$project_path" 1)
+
+    # 获取最近 stop summary
+    local last_session
+    last_session=$(get_last_stop_summary "$project_path")
+
+    # 生成输出
+    cat <<EOF
+<cc-mem-context>
+Project: $(resolve_project_root "$project_path")
+Updated: $timestamp
+
+Current Focus
+EOF
+
+    if [ -n "$high_value_memories" ]; then
+        # 分析主要类别
+        local main_category
+        main_category=$(echo "$high_value_memories" | head -1 | cut -d'|' -f3)
+        echo "- 最近工作集中在：${main_category:-项目开发}"
+        echo "- 当前上下文重点：查看下方高价值记忆"
+    else
+        echo "- 暂无历史记忆记录"
+        echo "- 建议先进行工作，记忆会自动捕获"
+    fi
+
+    echo ""
+    echo "Recent High-Value Memory"
+
+    if [ -n "$high_value_memories" ]; then
+        local i=1
+        echo "$high_value_memories" | while IFS='|' read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy; do
+            echo "$i. [$category] $summary"
+            if [ -n "$tags" ]; then
+                echo "   tags: $tags"
+            fi
+            i=$((i + 1))
+        done
+    else
+        echo "（无）"
+    fi
+
+    if [ -n "$related_memories" ]; then
+        echo ""
+        echo "Related Project Memory"
+        echo "$related_memories" | while IFS='|' read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy related_root; do
+            echo "- [$category] $summary"
+            echo "  related project: $related_root"
+        done
+    fi
+
+    echo ""
+    echo "Last Session"
+
+    if [ -n "$last_session" ]; then
+        echo "- stopped at: $last_session"
+        echo "- next likely step: 继续当前工作流"
+    else
+        echo "- 无最近会话记录"
+    fi
+
+    if should_include_timeline_hint "$project_path"; then
+        echo ""
+        echo "Recent Timeline Hint"
+        generate_timeline_hint "$project_path" 3
+    fi
+
+    echo ""
+    echo "If more detail is needed"
+    echo "- search: 查相关关键词"
+    echo "- timeline: 看某条记忆前后脉络"
+    echo "- get: 查看单条完整内容"
+    echo "</cc-mem-context>"
 }

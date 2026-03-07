@@ -25,6 +25,21 @@ load_config() {
     fi
 }
 
+ensure_db_ready() {
+    mkdir -p "$(dirname "$MEMORY_DB")"
+
+    if [ ! -f "$MEMORY_DB" ]; then
+        init_db >/dev/null 2>&1
+        return
+    fi
+
+    local has_memories
+    has_memories=$(sqlite3 "$MEMORY_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='memories';" 2>/dev/null || true)
+    if [ "$has_memories" != "memories" ]; then
+        init_db >/dev/null 2>&1
+    fi
+}
+
 # 显示帮助信息
 show_help() {
     cat <<EOF
@@ -44,6 +59,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   list              列出最近的记忆
   export            导出记忆到 Markdown
   context           生成项目 CLAUDE.md 上下文
+  sessionstart      生成 SessionStart 上下文注入
   projects          列出所有项目
   cleanup           清理过期记忆
   status            显示记忆库状态
@@ -78,6 +94,11 @@ cmd_capture() {
     local tags=""
     local concepts=""
     local session_id="${CLAUDE_SESSION_ID:-$$}"
+    local source="manual"
+    local memory_kind=""
+    local auto_inject_policy=""
+    local project_root=""
+    local expires_at=""
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -86,6 +107,11 @@ cmd_capture() {
             -t|--tags) tags="$2"; shift ;;
             --concepts) concepts="$2"; shift ;;
             -s|--session) session_id="$2"; shift ;;
+            --source) source="$2"; shift ;;
+            --memory-kind) memory_kind="$2"; shift ;;
+            --inject-policy) auto_inject_policy="$2"; shift ;;
+            --project-root) project_root="$2"; shift ;;
+            --expires-at) expires_at="$2"; shift ;;
             -h|--help) show_help; return ;;
             *) echo "未知选项：$1"; return 1 ;;
         esac
@@ -129,6 +155,8 @@ cmd_capture() {
                 fi
             fi
 
+            filtered_content=$(strip_injected_context_blocks "$filtered_content")
+
             local summary="${filtered_content:0:100}..."
 
             # 如果没有指定 concepts，尝试自动识别
@@ -139,7 +167,7 @@ cmd_capture() {
                 fi
             fi
 
-            local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts")
+            local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at")
 
             # 检查是否重复或错误
             if [[ "$id" == duplicate:* ]]; then
@@ -168,6 +196,11 @@ cmd_store() {
     local tags=""
     local summary=""
     local session_id="${CLAUDE_SESSION_ID:-$$}"
+    local source="manual"
+    local memory_kind=""
+    local auto_inject_policy=""
+    local project_root=""
+    local expires_at=""
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -176,6 +209,11 @@ cmd_store() {
             -t|--tags) tags="$2"; shift ;;
             -s|--session) session_id="$2"; shift ;;
             -m|--summary) summary="$2"; shift ;;
+            --source) source="$2"; shift ;;
+            --memory-kind) memory_kind="$2"; shift ;;
+            --inject-policy) auto_inject_policy="$2"; shift ;;
+            --project-root) project_root="$2"; shift ;;
+            --expires-at) expires_at="$2"; shift ;;
             -h|--help) show_help; return ;;
             *) echo "未知选项：$1"; return 1 ;;
         esac
@@ -188,6 +226,7 @@ cmd_store() {
 
     echo "请输入记忆内容（以 EOF 结束）："
     local content=$(cat)
+    content=$(strip_injected_context_blocks "$content")
 
     if [ -z "$content" ]; then
         echo "错误：记忆内容不能为空"
@@ -198,7 +237,7 @@ cmd_store() {
         summary="${content:0:100}..."
     fi
 
-    local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags")
+    local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags" "" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at")
     if [[ "$id" == duplicate:* ]]; then
         echo "跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
     elif [[ "$id" == error:* ]]; then
@@ -588,12 +627,50 @@ cmd_status() {
     echo "脚本目录：$SCRIPT_DIR"
 }
 
+# SessionStart 上下文生成
+cmd_sessionstart() {
+    local project_path=""
+    local limit=3
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -p|--project) project_path="$2"; shift ;;
+            -l|--limit) limit="$2"; shift ;;
+            -h|--help)
+                echo "用法：ccmem sessionstart [-p project] [-l limit]"
+                echo "生成 SessionStart 上下文注入"
+                echo ""
+                echo "选项："
+                echo "  -p, --project    项目路径（默认当前目录）"
+                echo "  -l, --limit      高价值记忆数量（默认 3）"
+                return
+                ;;
+            *) echo "未知选项：$1"; return 1 ;;
+        esac
+        shift
+    done
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    generate_sessionstart_context "$project_path" "$limit"
+}
+
 # 主函数
 main() {
     load_config
 
     local command="${1:-help}"
     shift || true
+
+    case $command in
+        init|help|--help|-h)
+            ;;
+        *)
+            ensure_db_ready
+            ;;
+    esac
 
     case $command in
         init)
@@ -637,6 +714,9 @@ main() {
             ;;
         status)
             cmd_status
+            ;;
+        sessionstart)
+            cmd_sessionstart "$@"
             ;;
         help|--help|-h)
             show_help

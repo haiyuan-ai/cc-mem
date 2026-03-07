@@ -222,7 +222,8 @@ test_user_prompt_submit_clears_log() {
     export PWD="$SCRIPT_DIR"
 
     # 执行 hook
-    bash "$HOOKS_DIR/user-prompt-submit.sh" 2>/dev/null || true
+    local result
+    result=$(bash "$HOOKS_DIR/user-prompt-submit.sh" 2>/dev/null || true)
 
     # 检查日志是否被清空
     if [ -f "$log_file" ]; then
@@ -242,6 +243,51 @@ test_user_prompt_submit_clears_log() {
         TESTS_PASSED=$((TESTS_PASSED + 1))
     fi
 
+    assert_equals "" "$result" "没有 prompt 时不应该输出业务日志"
+
+    cleanup_hooks_test
+}
+
+describe "SessionStart Hook 功能"
+
+it "应该输出结构化上下文而不是搜索结果"
+test_session_start_outputs_context_block() {
+    setup_hooks_test
+    local test_dir="/tmp/ccmem_session_start_$$"
+    mkdir -p "$test_dir"
+
+    store_memory "session1" "$test_dir" "decision" "SessionStart 内容" "SessionStart 摘要" "hook" "" "manual" > /dev/null
+    upsert_session "$TEST_SESSION_ID" "$test_dir"
+    sqlite3 "$TEST_DB" "UPDATE sessions SET status='stopped', summary='上次停在修复注入逻辑', end_time=CURRENT_TIMESTAMP WHERE id='$TEST_SESSION_ID';"
+
+    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"$test_dir\"}"
+    local result
+    result=$(echo "$input" | bash "$HOOKS_DIR/session-start.sh" 2>/dev/null || true)
+
+    assert_contains "$result" "<cc-mem-context>" "SessionStart 应该输出上下文标签"
+    assert_contains "$result" "Recent High-Value Memory" "应该包含高价值记忆部分"
+    assert_true "[[ ! \"$result\" == *\"搜索记忆\"* ]]" "不应该输出 search 命令的标题"
+
+    rm -rf "$test_dir"
+    cleanup_hooks_test
+}
+
+it "带 prompt 时应该输出 recall 上下文"
+test_user_prompt_submit_outputs_recall_context() {
+    setup_hooks_test
+    local test_dir="/tmp/ccmem_prompt_recall_$$"
+    mkdir -p "$test_dir"
+
+    store_memory "session1" "$test_dir" "decision" "SQLite recall 内容" "SQLite recall 摘要" "sqlite" "" "manual" > /dev/null
+
+    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"cwd\": \"$test_dir\", \"prompt\": \"SQLite\"}"
+    local result
+    result=$(echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" 2>/dev/null || true)
+
+    assert_contains "$result" "<cc-mem-recall>" "应该输出 recall 标签"
+    assert_contains "$result" "SQLite recall 摘要" "应该输出相关摘要"
+
+    rm -rf "$test_dir"
     cleanup_hooks_test
 }
 
@@ -388,6 +434,8 @@ test_hooks_config_valid_json() {
 # 测试执行
 # ═══════════════════════════════════════════════════════════
 
+run_tests "Hooks 功能测试"
+
 # 存在性测试
 test_post_tool_use_exists
 test_user_prompt_submit_exists
@@ -415,6 +463,10 @@ test_post_tool_use_bash
 
 # UserPromptSubmit 功能测试
 test_user_prompt_submit_clears_log
+
+# SessionStart / recall 注入测试
+test_session_start_outputs_context_block
+test_user_prompt_submit_outputs_recall_context
 
 # Stop Hook 功能测试
 test_stop_extract_last_message

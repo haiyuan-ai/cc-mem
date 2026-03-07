@@ -1,5 +1,31 @@
 # CC-mem 变更日志
 
+## [1.5.0] - 2026-03-07
+
+### ✨ Major Improvements
+
+#### 1. 引入分层记忆模型
+- `memories` 表新增 `source`、`memory_kind`、`auto_inject_policy`、`project_root`、`expires_at`
+- 新写入会按来源和类别自动推导长期记忆、工作记忆和临时记忆
+- 旧数据会按既有 tags/source 特征自动回填分层元数据
+
+#### 2. 自动注入链路升级
+- `SessionStart` 从普通搜索切换为结构化 `<cc-mem-context>` 注入
+- `UserPromptSubmit` 新增基于当前 prompt 的 `<cc-mem-recall>` 轻量 recall
+- 自动注入前会过滤过期临时记忆，并避免注入块再次回流入库
+
+#### 3. 受控 related project 与 timeline hint
+- related project 解析优先使用 Git/worktree `common-dir` 关系
+- SessionStart 在主项目上下文不足时可补 1 条 related project 记忆
+- 连续 debug / 连续决策链会自动附加短 `timeline hint`
+
+### 🧪 Testing
+
+- 新增旧数据回填测试
+- 新增 related project / timeline hint / query recall 测试
+- 新增真实 Git worktree 场景回归测试
+- 全量测试套件通过
+
 ## [1.4.0] - 2026-03-06
 
 ### 🐛 Bug Fixes

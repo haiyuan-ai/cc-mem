@@ -166,15 +166,10 @@ test_post_tool_use_edit() {
     echo "$input" | bash "$HOOKS_DIR/post-tool-use.sh" 2>/dev/null || true
 
     # 检查日志是否创建
-    if [ -f "$log_file" ]; then
-        local content=$(cat "$log_file")
-        assert_contains "$content" "FILE_CHANGE" "应该记录文件变更"
-        rm -f "$log_file"
-    else
-        # 日志没有创建，测试失败
-        echo -e "${RED}✗ FAIL${NC}: 日志文件应该被创建"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-    fi
+    assert_file_exists "$log_file" "日志文件应该被创建"
+    local content=$(cat "$log_file")
+    assert_contains "$content" "FILE_CHANGE" "应该记录文件变更"
+    rm -f "$log_file"
 
     cleanup_hooks_test
 }
@@ -196,14 +191,10 @@ test_post_tool_use_bash() {
 
     echo "$input" | bash "$HOOKS_DIR/post-tool-use.sh" 2>/dev/null || true
 
-    if [ -f "$log_file" ]; then
-        local content=$(cat "$log_file")
-        assert_contains "$content" "BASH" "应该记录 Bash 命令"
-        rm -f "$log_file"
-    else
-        echo -e "${RED}✗ FAIL${NC}: 日志文件应该被创建"
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-    fi
+    assert_file_exists "$log_file" "日志文件应该被创建"
+    local content=$(cat "$log_file")
+    assert_contains "$content" "BASH" "应该记录 Bash 命令"
+    rm -f "$log_file"
 
     cleanup_hooks_test
 }
@@ -231,20 +222,13 @@ test_user_prompt_submit_clears_log() {
 
     # 检查日志是否被清空
     if [ -f "$log_file" ]; then
-        local line_count=$(wc -l < "$log_file" 2>/dev/null || echo "0")
-        # 日志应该被清空（0 行）
-        if [ "$line_count" -eq 0 ]; then
-            echo -e "${GREEN}✓ PASS${NC}: 日志应该被清空"
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            echo -e "${RED}✗ FAIL${NC}: 日志应该被清空"
-            echo "  实际行数：$line_count"
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        local line_count
+        line_count=$(wc -l < "$log_file" 2>/dev/null || echo "0")
+        line_count=$(echo "$line_count" | tr -d '[:space:]')
+        assert_equals "0" "$line_count" "日志应该被清空"
         rm -f "$log_file"
     else
-        echo -e "${GREEN}✓ PASS${NC}: 日志文件已被处理"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
+        assert_true "true" "日志文件已被处理"
     fi
 
     assert_equals "" "$result" "没有 prompt 时不应该输出业务日志"
@@ -325,8 +309,7 @@ EOF
 
     # 检查调试日志中是否成功提取消息
     if grep -q "Extracted last assistant message" /tmp/ccmem_debug.log 2>/dev/null; then
-        echo -e "${GREEN}✓ PASS${NC}: 应该提取到助手消息"
-        TESTS_PASSED=$((TESTS_PASSED + 1))
+        assert_true "true" "应该提取到助手消息"
     else
         echo -e "${YELLOW}⊘ SKIP${NC}: 调试日志不可用，跳过验证"
         TESTS_SKIPPED=$((TESTS_SKIPPED + 1))

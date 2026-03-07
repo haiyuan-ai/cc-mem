@@ -76,39 +76,26 @@ describe "特殊字符处理"
 
 it "应该处理包含单引号的内容"
 test_content_with_single_quotes() {
-    local content="It is a test with quotes"
+    local content="It's a unique quote test $(generate_id)"
     local id=$(store_memory "session1" "/test" "context" "$content" "摘要" "" "")
-    # 验证内容是否被存储（不直接查询含单引号的内容）
-    if [[ "$id" != duplicate:* ]]; then
-        local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
-        assert_not_empty "$stored" "应该存储内容"
-    else
-        skip_test "内容重复"
-    fi
+    local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
+    assert_not_empty "$stored" "应该存储内容"
 }
 
 it "应该处理包含双引号的内容"
 test_content_with_double_quotes() {
-    local content='Say "Hello" to "World"'
+    local content="Say \"Hello\" to \"World\" $(generate_id)"
     local id=$(store_memory "session1" "/test" "context" "$content" "摘要" "" "")
-    if [[ "$id" != duplicate:* ]]; then
-        local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
-        assert_contains "$stored" "Hello" "应该正确存储双引号"
-    else
-        skip_test "内容重复"
-    fi
+    local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
+    assert_contains "$stored" "Hello" "应该正确存储双引号"
 }
 
 it "应该处理包含换行符的内容"
 test_content_with_newlines() {
-    local content=$'Line 1\nLine 2\nLine 3'
+    local content=$'Line 1\nLine 2\nLine 3\n'"$(generate_id)"
     local id=$(store_memory "session1" "/test" "context" "$content" "摘要" "" "")
-    if [[ "$id" != duplicate:* ]]; then
-        local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
-        assert_contains "$stored" "Line" "应该存储包含换行的内容"
-    else
-        skip_test "内容重复"
-    fi
+    local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
+    assert_contains "$stored" "Line" "应该存储包含换行的内容"
 }
 
 it "应该处理包含 SQL 特殊字符的内容"
@@ -121,14 +108,10 @@ test_content_with_sql_chars() {
 
 it "应该处理包含 HTML 标签的内容"
 test_content_with_html() {
-    local content="<div>Hello World</div>"
+    local content="<div>Hello World $(generate_id)</div>"
     local id=$(store_memory "session1" "/test" "context" "$content" "摘要" "" "")
-    if [[ "$id" != duplicate:* ]]; then
-        local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
-        assert_contains "$stored" "<div>" "应该存储 HTML 标签"
-    else
-        skip_test "内容重复"
-    fi
+    local stored=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE id='$id';")
+    assert_contains "$stored" "<div>" "应该存储 HTML 标签"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -210,15 +193,11 @@ test_negative_timestamp() {
 it "应该处理未来时间戳"
 test_future_timestamp() {
     # 存储记忆，时间戳应该是当前时间
-    local id=$(store_memory "session1" "/test" "context" "内容" "摘要" "" "")
-    if [[ "$id" != duplicate:* ]]; then
-        local epoch=$(sqlite3 "$TEST_DB" "SELECT timestamp_epoch FROM memories WHERE id='$id';")
-        local current=$(date +%s)
-        # epoch 不应该超过当前时间太多（允许少量误差）
-        assert_true "[ $epoch -le $((current + 60)) ]" "时间戳不应该超过当前时间太多"
-    else
-        skip_test "内容重复"
-    fi
+    local id=$(store_memory "session1" "/test" "context" "未来时间测试 $(generate_id)" "摘要" "" "")
+    local epoch=$(sqlite3 "$TEST_DB" "SELECT timestamp_epoch FROM memories WHERE id='$id';")
+    local current=$(date +%s)
+    # epoch 不应该超过当前时间太多（允许少量误差）
+    assert_true "[ $epoch -le $((current + 60)) ]" "时间戳不应该超过当前时间太多"
 }
 
 # ═══════════════════════════════════════════════════════════

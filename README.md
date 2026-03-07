@@ -235,8 +235,8 @@ ccmem-cli.sh get mem_123 mem_456
 # 列出最近记忆
 ccmem-cli.sh list
 
-# 手动创建记忆
-ccmem-cli.sh store -p "/path/to/project" -c "pattern" -t "tag" -m "摘要"
+# 手动创建记忆（自定义摘要）
+ccmem-cli.sh capture -p "/path/to/project" -c "pattern" -t "tag" -m "摘要"
 
 # 导出记忆
 ccmem-cli.sh export -o "~/exports"
@@ -339,15 +339,11 @@ ccmem-cli.sh get mem_123
 ccmem-cli.sh get mem_123 mem_456 mem_789
 ```
 
-#### store - 手动创建记忆
+#### capture - 手动创建记忆
 
 ```bash
-# 手动创建一条记忆
-echo "记忆内容" | ccmem-cli.sh store -p "/path/to/project" -c "pattern" -t "tag" -m "自定义摘要"
-
-# 交互模式（从 stdin 读取）
-ccmem-cli.sh store -p "/path/to/project" -c "context"
-# 然后输入内容，Ctrl+D 结束
+# 带自定义摘要创建一条记忆
+echo "记忆内容" | ccmem-cli.sh capture -p "/path/to/project" -c "pattern" -t "tag" -m "自定义摘要"
 ```
 
 #### inject-context - 生成结构化开场上下文
@@ -636,8 +632,7 @@ done < notes.txt
 ### 手动创建记忆
 
 ```bash
-ccmem-cli.sh store -p "/path/to/project" -c "pattern" -t "react,hooks" -m "自定义 Hook 模式"
-# 然后输入内容，以 EOF 结束
+echo "自定义 Hook 模式正文" | ccmem-cli.sh capture -p "/path/to/project" -c "pattern" -t "react,hooks" -m "自定义 Hook 模式"
 ```
 
 ### 全文检索

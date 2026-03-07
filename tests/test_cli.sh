@@ -30,6 +30,7 @@ test_help_lists_commands() {
     assert_contains "$result" "search" "应该列出 search 命令"
     assert_contains "$result" "history" "应该列出 history 命令"
     assert_contains "$result" "export" "应该列出 export 命令"
+    assert_not_contains "$result" "store" "不应再列出 store 命令"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -76,6 +77,22 @@ test_capture_auto_detect_concepts() {
     assert_contains "$result" "自动识别概念" "应该自动识别概念"
 }
 
+it "应该支持自定义摘要"
+test_capture_supports_custom_summary() {
+    local content="自定义摘要正文_$(date +%s)"
+    local custom_summary="这是自定义摘要"
+    local result
+    result=$(echo "$content" | "$CLI" capture -c "pattern" -m "$custom_summary" 2>&1)
+    local memory_id
+    memory_id=$(echo "$result" | sed -n 's/.*记忆 ID: \(mem_[A-Za-z0-9_]*\).*/\1/p' | tail -n 1)
+
+    assert_contains "$result" "记忆已存储" "应该成功存储带自定义摘要的记忆"
+    assert_contains "$result" "记忆 ID" "应该返回记忆 ID"
+    local stored_summary
+    stored_summary=$(db_query "SELECT summary FROM memories WHERE id = '$memory_id';")
+    assert_equals "$custom_summary" "$stored_summary" "应该保存自定义摘要"
+}
+
 it "应该检测重复内容"
 test_capture_detects_duplicate() {
     local unique_content="唯一内容_$(date +%s)"
@@ -110,12 +127,12 @@ test_capture_rejects_whitespace_only() {
     assert_equals "$before_count" "$after_count" "纯空白内容不应该写入数据库"
 }
 
-it "store 命令遇到无效类别时应该返回错误"
-test_store_rejects_invalid_category() {
+it "capture 命令遇到无效类别时应该返回错误"
+test_capture_rejects_invalid_category() {
     local before_count
     before_count=$(db_query "SELECT COUNT(*) FROM memories;")
     local result
-    result=$(echo "store invalid category" | "$CLI" store -c "invalid_category" 2>&1)
+    result=$(echo "capture invalid category" | "$CLI" capture -c "invalid_category" 2>&1)
     local status=$?
     local after_count
     after_count=$(db_query "SELECT COUNT(*) FROM memories;")
@@ -388,10 +405,11 @@ test_status_shows_session_count
 # capture 命令测试
 test_capture_memory
 test_capture_auto_detect_concepts
+test_capture_supports_custom_summary
 test_capture_detects_duplicate
 test_capture_filters_private
 test_capture_rejects_whitespace_only
-test_store_rejects_invalid_category
+test_capture_rejects_invalid_category
 
 # search 命令测试
 test_search_memories

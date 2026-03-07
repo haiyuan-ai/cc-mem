@@ -90,7 +90,6 @@ CC-Mem CLI - Claude Code 记忆管理工具
 命令:
   init              初始化数据库
   capture           捕获当前会话记忆
-  store             手动存储一条记忆
   search            搜索记忆（三层检索第一步）
   timeline          获取时间线上下文（三层检索第二步）
   get               获取记忆详情（三层检索第三步）
@@ -112,12 +111,14 @@ CC-Mem CLI - Claude Code 记忆管理工具
   ccmem-cli.sh timeline -a mem_xxx -b 3 -A 3
   ccmem-cli.sh get mem_123 mem_456
   ccmem-cli.sh capture -c "decision" -t "important,core"
+  echo "重要模式" | ccmem-cli.sh capture -c "pattern" -t "react,hooks" -m "自定义摘要"
   ccmem-cli.sh export -o "~/exports"
   ccmem-cli.sh related-projects -p "/path/to/project"
 选项:
   -p, --project     项目路径
   -c, --category    记忆类别 (decision|solution|pattern|debug|context)
   -t, --tags        标签（逗号分隔）
+  -m, --summary     自定义摘要
   --concepts        概念标签（how-it-works|problem-solution|gotcha|pattern|trade-off|why-it-exists|what-changed）
   -q, --query       检索关键词
   -o, --output      导出目录（默认：$HOME/cc-mem-export）
@@ -132,6 +133,7 @@ cmd_capture() {
     local project_path=""
     local category="context"
     local tags=""
+    local summary=""
     local concepts=""
     local session_id="${CLAUDE_SESSION_ID:-$$}"
     local source="manual"
@@ -149,6 +151,7 @@ cmd_capture() {
             -p|--project) project_path="$2"; shift ;;
             -c|--category) category="$2"; shift ;;
             -t|--tags) tags="$2"; shift ;;
+            -m|--summary) summary="$2"; shift ;;
             --concepts) concepts="$2"; shift ;;
             -s|--session) session_id="$2"; shift ;;
             --source) source="$2"; shift ;;
@@ -203,8 +206,9 @@ cmd_capture() {
 
             filtered_content=$(strip_injected_context_blocks "$filtered_content")
 
-            local summary
-            summary=$(build_default_summary "$filtered_content")
+            if [ -z "$summary" ]; then
+                summary=$(build_default_summary "$filtered_content")
+            fi
 
             # 如果没有指定 concepts，尝试自动识别
             if [ -z "$concepts" ]; then
@@ -226,64 +230,6 @@ cmd_capture() {
 
     echo "没有捕获到内容（从 stdin 为空）"
 }
-
-cmd_store() {
-    local project_path=""
-    local category="context"
-    local tags=""
-    local summary=""
-    local session_id="${CLAUDE_SESSION_ID:-$$}"
-    local source="manual"
-    local memory_kind=""
-    local auto_inject_policy=""
-    local project_root=""
-    local expires_at=""
-    local classification_confidence=""
-    local classification_reason=""
-    local classification_source=""
-    local classification_version=""
-
-    while [[ "$#" -gt 0 ]]; do
-        case $1 in
-            -p|--project) project_path="$2"; shift ;;
-            -c|--category) category="$2"; shift ;;
-            -t|--tags) tags="$2"; shift ;;
-            -s|--session) session_id="$2"; shift ;;
-            -m|--summary) summary="$2"; shift ;;
-            --source) source="$2"; shift ;;
-            --memory-kind) memory_kind="$2"; shift ;;
-            --inject-policy) auto_inject_policy="$2"; shift ;;
-            --project-root) project_root="$2"; shift ;;
-            --expires-at) expires_at="$2"; shift ;;
-            --classification-confidence) classification_confidence="$2"; shift ;;
-            --classification-reason) classification_reason="$2"; shift ;;
-            --classification-source) classification_source="$2"; shift ;;
-            --classification-version) classification_version="$2"; shift ;;
-            -h|--help) show_help; return ;;
-            *) print_unknown_option "$1"; return 1 ;;
-        esac
-        shift
-    done
-
-    project_path="$(resolve_effective_project_path "$project_path")"
-
-    echo "请输入记忆内容（以 EOF 结束）："
-    local content=$(cat)
-    content=$(strip_injected_context_blocks "$content")
-
-    if [ -z "$content" ]; then
-        echo "错误：记忆内容不能为空"
-        return 1
-    fi
-
-    if [ -z "$summary" ]; then
-        summary=$(build_default_summary "$content")
-    fi
-
-    local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags" "" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at" "$classification_confidence" "$classification_reason" "$classification_source" "$classification_version")
-    handle_store_memory_result "$id" "" "" "记忆已存储：$id"
-}
-
 cmd_search() {
     local project_path=""
     local query=""
@@ -771,9 +717,6 @@ main() {
             ;;
         capture)
             cmd_capture "$@"
-            ;;
-        store)
-            cmd_store "$@"
             ;;
         search)
             cmd_search "$@"

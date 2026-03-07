@@ -56,7 +56,7 @@
 |------|---------|------|
 | help | 2 | ✅ |
 | status | 3 | ✅ |
-| capture/store | 6 | ✅ |
+| capture | 7 | ✅ |
 | search | 3 | ✅ |
 | history | 2 | ✅ |
 | list | 3 | ✅ |

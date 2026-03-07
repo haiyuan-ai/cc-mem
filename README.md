@@ -406,6 +406,10 @@ args = ["/ABSOLUTE/PATH/TO/cc-mem/mcp/server.py"]
 
 - `extensions/opencode/`
 
+安装到 Claude Code 插件目录后，OpenCode 应引用构建产物：
+
+- `~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js`
+
 它基于 `cc-mem` MCP 实现：
 - 开场上下文注入
 - query-aware recall

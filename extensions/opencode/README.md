@@ -46,8 +46,34 @@ OpenCode.
 
 ## Minimal usage
 
-Use the example config as a starting point and wire the plugin into your local
-OpenCode setup.
+After installing dependencies, build the extension first:
+
+```bash
+cd extensions/opencode
+bun install
+bun run build
+```
+
+Or:
+
+```bash
+cd extensions/opencode
+npm install
+npm run build
+```
+
+Then wire the built plugin into your local OpenCode setup:
+
+```ts
+import ccMemPlugin from "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js"
+
+export default {
+  plugins: [ccMemPlugin]
+}
+```
+
+Use [examples/opencode.config.ts](/Users/ningoo/github/cc-mem/extensions/opencode/examples/opencode.config.ts)
+as a starting point.
 
 ## Local development
 

@@ -21,10 +21,16 @@ if ! command -v git &> /dev/null; then
 fi
 
 if ! command -v jq &> /dev/null; then
-    echo "⚠️  警告: 未检测到 jq，将使用基本 JSON 处理"
+    echo "⚠️  警告: 未检测到 jq。将尝试使用 Python 处理插件注册，但 hooks 自动注入/捕获能力仍建议安装 jq。"
     HAS_JQ=false
 else
     HAS_JQ=true
+fi
+
+if ! command -v python3 &> /dev/null; then
+    HAS_PYTHON=false
+else
+    HAS_PYTHON=true
 fi
 
 # 1. 克隆仓库
@@ -36,6 +42,10 @@ fi
 mkdir -p "$INSTALL_DIR"
 echo "  克隆仓库..."
 git clone --depth 1 "https://github.com/${OWNER}/${REPO}.git" "$INSTALL_DIR"
+
+# 1.1 确保脚本具有执行权限（跨平台 clone 后更稳）
+chmod +x "$INSTALL_DIR"/bin/*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR"/hooks/*.sh 2>/dev/null || true
 
 # 2. 初始化数据库
 echo "  初始化数据库..."
@@ -74,6 +84,7 @@ else
 {"${MARKETPLACE_NAME}":{"source":{"source":"github","repo":"${OWNER}/${REPO}"},"installLocation":"${INSTALL_DIR}","lastUpdated":"${TIMESTAMP}"}}
 EOF
     # 简单合并（假设文件格式正确）
+    if [ "$HAS_PYTHON" = true ]; then
     python3 -c "
 import json, sys
 with open('$MARKETPLACES_FILE', 'r') as f:
@@ -84,6 +95,9 @@ data.update(new_data)
 with open('$MARKETPLACES_FILE', 'w') as f:
     json.dump(data, f, indent=2)
 " 2>/dev/null || echo "⚠️  请手动编辑 ${MARKETPLACES_FILE} 添加 marketplace 配置"
+    else
+        echo "⚠️  未检测到 python3，无法自动写入 ${MARKETPLACES_FILE}，请按 README 手动添加 marketplace 配置"
+    fi
 fi
 
 # 4. 注册已安装插件
@@ -112,6 +126,7 @@ else
     cat > /tmp/ccmem_installed.json << EOF
 {"cc-mem@${MARKETPLACE_NAME}":[{"scope":"user","installPath":"${INSTALL_DIR}","version":"${VERSION}","installedAt":"${TIMESTAMP}","lastUpdated":"${TIMESTAMP}","gitCommitSha":"${COMMIT_SHA}"}]}
 EOF
+    if [ "$HAS_PYTHON" = true ]; then
     python3 -c "
 import json, sys
 with open('$INSTALLED_FILE', 'r') as f:
@@ -124,6 +139,9 @@ data['plugins'].update(new_data)
 with open('$INSTALLED_FILE', 'w') as f:
     json.dump(data, f, indent=2)
 " 2>/dev/null || echo "⚠️  请手动编辑 ${INSTALLED_FILE} 添加插件配置"
+    else
+        echo "⚠️  未检测到 python3，无法自动写入 ${INSTALLED_FILE}，请按 README 手动添加已安装插件配置"
+    fi
 fi
 
 echo ""
@@ -132,8 +150,14 @@ echo ""
 echo "📍 安装位置: ${INSTALL_DIR}"
 echo ""
 echo "🚀 使用方法:"
-echo "   ccmem-cli.sh status    # 查看状态"
-echo "   ccmem-cli.sh --help    # 查看帮助"
+echo "   ${INSTALL_DIR}/bin/ccmem-cli.sh status    # 查看状态"
+echo "   ${INSTALL_DIR}/bin/ccmem-cli.sh --help    # 查看帮助"
+if [ "$HAS_JQ" = false ]; then
+    echo ""
+    echo "⚠️  建议补装 jq 以启用完整 hooks 能力："
+    echo "   macOS: brew install jq"
+    echo "   Ubuntu/Debian: sudo apt-get install jq"
+fi
 echo ""
 echo "⚠️  请重启 Claude Code 以激活 hooks:"
 echo "   1. 按 Ctrl+D 或输入 exit"

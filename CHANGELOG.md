@@ -2,7 +2,7 @@
 
 ## [1.5.1] - 2026-03-07
 
-### ✨ Highlights
+### ✨ Major Improvements
 
 #### 1. 跨项目记忆关联正式落地
 - 新增 `project_links` 表，显式管理受控的跨项目关联
@@ -23,8 +23,16 @@
 - 第二阶段已接入记忆分层决策：
   - 自动分类结果会继续影响 `memory_kind`
   - 自动分类结果会继续影响 `auto_inject_policy`
+- 分类结果现在会以写入时快照形式持久化到 `memories`：
+  - `classification_confidence`
+  - `classification_reason`
+  - `classification_source`
+  - `classification_version`
+- 新写入记忆会冻结当时的分类结果，后续规则调整不会自动重写历史记录
+- `inject-context` 和 query recall 的 salience 排序现在优先读取库中的分类快照，旧记录缺字段时才运行时兜底重算
 - hooks debug log 会记录完整决策链：
   - `CLASSIFICATION_SOURCE`
+  - `CLASSIFICATION_VERSION`
   - `CATEGORY`
   - `CONFIDENCE`
   - `REASON`
@@ -45,6 +53,8 @@
 - 新增 hook 自动清理与节流测试
 - 新增规则分类器单元测试
 - 新增 `user-prompt-submit` / `session-end` 分类与分层联动测试
+- 新增分类快照落库测试
+- 新增 salience 排序与主项目优先级测试
 - 真实 Git worktree、related project 注入 / recall 回归继续通过
 
 ## [1.5.0] - 2026-03-07

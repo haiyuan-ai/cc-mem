@@ -2,41 +2,50 @@
 
 ## [1.5.1] - 2026-03-07
 
-### 🧠 Rule-Based Memory Classification
+### ✨ Highlights
 
-- 新增 `lib/classification.sh`，提供统一的规则分类入口
-- 自动采集路径改为共享同一套分类器：
-  - `post_tool_use`
-  - `user_prompt_submit`
-  - `session_end`
-  - `stop_summary`
-- 分类输出不再只有 `category`，同时生成 `confidence` 和 `reason`
-- hooks debug log 现在会记录 `CLASSIFICATION_SOURCE=rule`、分类结果、置信度与分类理由
-- 第一阶段仅影响自动采集路径的 `category`，不改动手动指定类别，也暂不直接改写 `memory_kind / auto_inject_policy`
-
-### 🧹 Cleanup Strategy Upgrade
-
-- `cleanup` 命令改为默认安全模式，只清理低优先级临时记忆
-- 新增 `cleanup --aggressive`，可手动扩大到所有已过期记忆和超龄 working 记忆
-- `stop` / `session-end` 新增机会式自动清理，采用限频 + 小批量删除策略
-- 自动清理基于 `memory_kind`、`auto_inject_policy` 和 `expires_at`，不再使用粗粒度全量清理
-
-### ✨ Cross-Project Memory Linking
-
-- 新增 `project_links` 表，用于存储受控跨项目关联
+#### 1. 跨项目记忆关联正式落地
+- 新增 `project_links` 表，显式管理受控的跨项目关联
 - 新增 `related-projects`、`link-projects`、`unlink-projects`、`refresh-project-links` 命令
 - `inject-context` 和 query recall 改为优先读取 `project_links`
-- 自动关联支持 Git worktree / 父子项目路径，手动关联可覆盖自动规则
+- 自动关联支持 Git worktree、同仓库和父子项目路径，手动关联不会被自动刷新覆盖
+
+#### 2. 记忆清理升级为双模式
+- `cleanup` 默认改为安全模式，只清理低优先级临时记忆
+- 新增 `cleanup --aggressive`，支持人工扩大到所有已过期记忆和超龄 `working` 记忆
+- `stop` / `session-end` 增加机会式自动清理，采用限频 + 小批量删除策略
+- 清理逻辑统一基于 `memory_kind`、`auto_inject_policy` 和 `expires_at`
+
+#### 3. 规则自动分类接入真实决策链
+- 新增 `lib/classification.sh`，为自动采集路径提供统一的规则分类器
+- `post_tool_use`、`user_prompt_submit`、`session_end`、`stop_summary` 共享同一套分类逻辑
+- 分类结果现在不只有 `category`，还会生成 `confidence` 和 `reason`
+- 第二阶段已接入记忆分层决策：
+  - 自动分类结果会继续影响 `memory_kind`
+  - 自动分类结果会继续影响 `auto_inject_policy`
+- hooks debug log 会记录完整决策链：
+  - `CLASSIFICATION_SOURCE`
+  - `CATEGORY`
+  - `CONFIDENCE`
+  - `REASON`
+  - `MEMORY_KIND`
+  - `AUTO_INJECT_POLICY`
+
+### 🛠 Internal Improvements
+
+- 抽离 `hook_utils.sh`，统一 hooks 的运行时辅助逻辑
+- 抽离 `memory_policy.sh` 和 `injection.sh`，降低 `sqlite.sh` 的职责耦合
+- 移除旧的 `compress` 命令、`context` / `CLAUDE.md` 导出路线和已失效的 LLM 压缩残留
+- 安装脚本与文档同步到当前运行时依赖和命令语义
 
 ### 🧪 Testing
 
-- 新增规则分类器单元测试
-- 新增 `user-prompt-submit` / `session-end` 分类集成测试
-- 新增 safe/aggressive cleanup 测试
+- 新增 `project_links` 数据层和 CLI 回归测试
+- 新增 safe / aggressive cleanup 测试
 - 新增 hook 自动清理与节流测试
-- 新增 `project_links` 数据层测试
-- 新增项目关联 CLI 测试
-- 原有 related project 注入 / recall / worktree 回归测试继续通过
+- 新增规则分类器单元测试
+- 新增 `user-prompt-submit` / `session-end` 分类与分层联动测试
+- 真实 Git worktree、related project 注入 / recall 回归继续通过
 
 ## [1.5.0] - 2026-03-07
 

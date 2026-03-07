@@ -706,9 +706,9 @@ ccmem-cli.sh capture -t "important,architecture,database"
 | **向量检索** | ❌ | ✅ Chroma 混合检索 | ✅ pgvector / 向量检索 | ✅ 多种向量后端 |
 | **记忆历史** | ✅ | ✅ | ✅ | ✅ |
 | **内容去重** | ✅ 内容哈希 | ✅ | ✅ | ✅ |
-| **概念标签** | ✅ 预定义概念自动识别 | ✅ | ✅ | ✅ |
+| **概念标签** | ✅ 自动识别 | ✅ | ✅ | ✅ |
 | **三层检索** | ✅ | ✅ | ✅ | ⚠️ 通用检索 |
-| **Hooks 集成** | ✅ Claude Code hooks | ✅ Claude Code hooks | ❌ 原生 hooks | ❌ 原生 hooks |
+| **Hooks 集成** | ✅ | ✅ | ❌ 原生 hooks | ❌ 原生 hooks |
 | **Graph 记忆** | ❌ | ❌ | ✅ | ✅ 可选 |
 | **MCP 工具** | ❌ | ✅ | ❌ | ✅ |
 | **Web UI** | ❌ | ✅ | ❌ | ✅ |

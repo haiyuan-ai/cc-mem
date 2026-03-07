@@ -36,6 +36,7 @@ Claude Code 轻量级记忆管理系统
 - **自动捕获**：PostToolUse / Stop / SessionEnd 自动沉淀工作过程
 - **实时注入**：SessionStart 预热上下文 + UserPromptSubmit query-aware recall
 - **分层记忆**：按来源、生命周期和自动注入资格组织记忆
+- **跨项目关联**：通过 `project_links` 受控补充 related project 记忆
 - **自动裁剪**：Stop / SessionEnd 会对超长回复和日志做本地裁剪
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
@@ -139,7 +140,7 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
   {
     "scope": "user",
     "installPath": "/ABSOLUTE/PATH/TO/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "installedAt": "2026-03-07T00:00:00.000Z",
     "lastUpdated": "2026-03-07T00:00:00.000Z",
     "gitCommitSha": "COMMIT_SHA_HERE"
@@ -240,6 +241,13 @@ ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 
 # 列出所有项目
 ccmem-cli.sh projects
+
+# 列出关联项目
+ccmem-cli.sh related-projects -p "/path/to/project"
+
+# 手动建立/删除项目关联
+ccmem-cli.sh link-projects "/repo/app" "/repo/lib-common" --reason "shared architecture"
+ccmem-cli.sh unlink-projects "/repo/app" "/repo/lib-common"
 
 # 清理过期记忆
 ccmem-cli.sh cleanup -d 30
@@ -356,6 +364,24 @@ ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 # 列出所有记忆项目
 ccmem-cli.sh projects
 ```
+
+#### related-projects / link-projects / unlink-projects - 跨项目关联管理
+
+```bash
+# 查看当前项目的关联项目
+ccmem-cli.sh related-projects -p "/repo/app"
+
+# 手动建立关联
+ccmem-cli.sh link-projects "/repo/app" "/repo/lib-common" --reason "shared architecture"
+
+# 删除关联
+ccmem-cli.sh unlink-projects "/repo/app" "/repo/lib-common"
+```
+
+补充说明：
+- 当前项目始终优先，关联项目只作为补充
+- 自动注入和 recall 最多补 1-2 条关联项目记忆
+- worktree / 父子项目会自动建立强关联，手动关联可覆盖自动规则
 
 #### cleanup - 清理过期记忆
 
@@ -518,6 +544,18 @@ done < notes.txt
 | project_root | TEXT | 项目根路径 |
 | message_count | INTEGER | 消息数 |
 | summary | TEXT | 会话摘要 |
+
+### project_links 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | TEXT | 主键 |
+| source_root | TEXT | 源项目根路径 |
+| target_root | TEXT | 目标项目根路径 |
+| link_type | TEXT | 关联类型（manual/worktree/parent_child/same_repo） |
+| strength | INTEGER | 关联强度 |
+| reason | TEXT | 关联原因 |
+| is_manual | INTEGER | 是否为手动关联 |
 
 ## Hooks
 
@@ -702,7 +740,6 @@ chmod +x ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/hooks/*.sh
 
 ## 开发计划
 
-- [ ] 跨项目记忆关联
 - [ ] 更智能的自动分类
 - [ ] 定时任务支持
 - [ ] 向量检索支持

@@ -37,6 +37,12 @@ test_projects_table_exists() {
     assert_equals "projects" "$result" "projects 表应该存在"
 }
 
+it "应该创建 project_links 表"
+test_project_links_table_exists() {
+    local result=$(sqlite3 "$TEST_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='project_links';")
+    assert_equals "project_links" "$result" "project_links 表应该存在"
+}
+
 it "应该创建 memory_history 表"
 test_memory_history_table_exists() {
     local result=$(sqlite3 "$TEST_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_history';")
@@ -74,6 +80,47 @@ test_generate_id_contains_timestamp() {
     # ID 格式：mem_TIMESTAMP_RANDOM
     local timestamp=$(echo "$id" | cut -d'_' -f2)
     assert_true "[ ${#timestamp} -ge 10 ]" "ID 应该包含时间戳"
+}
+
+# ═══════════════════════════════════════════════════════════
+# 测试：项目关联
+# ═══════════════════════════════════════════════════════════
+
+describe "项目关联"
+
+it "应该可以建立并列出项目关联"
+test_project_links_upsert_and_list() {
+    link_projects "/repo/app" "/repo/lib-common" "manual" 95 "shared architecture"
+
+    local result
+    result=$(list_related_projects "/repo/app" 5 70)
+    assert_contains "$result" "/repo/lib-common" "应该列出关联项目"
+    assert_contains "$result" "manual" "应该记录关联类型"
+    assert_contains "$result" "95" "应该记录关联强度"
+}
+
+it "应该可以删除项目关联"
+test_project_links_delete() {
+    link_projects "/repo/remove-a" "/repo/remove-b" "manual" 95 "temporary link"
+    unlink_projects "/repo/remove-a" "/repo/remove-b"
+
+    local result
+    result=$(list_related_projects "/repo/remove-a" 5 70)
+    assert_true "[ -z \"$result\" ]" "删除后不应再返回关联项目"
+}
+
+it "手动关联不应被自动刷新覆盖"
+test_project_links_manual_should_override_auto() {
+    store_memory "ma1" "/repo/manual" "decision" "手动项目内容" "手动项目摘要" "" "" "manual" "" "" "/repo/manual"
+    store_memory "ma2" "/repo/manual/child" "pattern" "子项目内容" "子项目摘要" "" "" "manual" "" "" "/repo/manual/child"
+
+    link_projects "/repo/manual" "/repo/manual/child" "manual" 95 "manual override"
+    refresh_project_links "/repo/manual"
+
+    local result
+    result=$(list_related_projects "/repo/manual" 5 70)
+    assert_contains "$result" "manual" "手动关联类型应该保留"
+    assert_contains "$result" "95" "手动关联强度应该保留"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -682,6 +729,7 @@ test_db_init
 test_memories_table_exists
 test_sessions_table_exists
 test_projects_table_exists
+test_project_links_table_exists
 test_memory_history_table_exists
 test_fts5_table_exists
 
@@ -689,6 +737,11 @@ test_fts5_table_exists
 test_generate_id_prefix
 test_generate_id_unique
 test_generate_id_contains_timestamp
+
+# 项目关联测试
+test_project_links_upsert_and_list
+test_project_links_delete
+test_project_links_manual_should_override_auto
 
 # 内容哈希测试
 test_content_hash_length

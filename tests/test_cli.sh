@@ -255,6 +255,46 @@ test_projects_lists_projects() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：项目关联命令
+# ═══════════════════════════════════════════════════════════
+
+describe "项目关联命令"
+
+it "应该建立并列出项目关联"
+test_related_projects_commands() {
+    "$CLI" link-projects "/repo/cli-app" "/repo/cli-lib" --reason "cli test" > /dev/null 2>&1
+
+    local result
+    result=$("$CLI" related-projects -p "/repo/cli-app" 2>&1)
+    assert_contains "$result" "/repo/cli-lib" "应该列出关联项目"
+    assert_contains "$result" "manual" "应该显示手动关联类型"
+}
+
+it "应该删除项目关联"
+test_unlink_projects_command() {
+    "$CLI" link-projects "/repo/cli-unlink-a" "/repo/cli-unlink-b" > /dev/null 2>&1
+    "$CLI" unlink-projects "/repo/cli-unlink-a" "/repo/cli-unlink-b" > /dev/null 2>&1
+
+    local result
+    result=$("$CLI" related-projects -p "/repo/cli-unlink-a" 2>&1)
+    assert_true "[[ \"$result\" != *\"/repo/cli-unlink-b\"* ]]" "删除后不应再显示关联项目"
+}
+
+it "应该刷新自动项目关联"
+test_refresh_project_links_command() {
+    echo "父项目记忆" | "$CLI" capture -p "/repo/refresh-parent" -c "decision" > /dev/null 2>&1
+    echo "子项目记忆" | "$CLI" capture -p "/repo/refresh-parent/child" -c "context" > /dev/null 2>&1
+
+    local refresh_output
+    refresh_output=$("$CLI" refresh-project-links -p "/repo/refresh-parent/child" 2>&1)
+    assert_contains "$refresh_output" "已刷新项目关联" "应该提示刷新成功"
+
+    local related_output
+    related_output=$("$CLI" related-projects -p "/repo/refresh-parent/child" 2>&1)
+    assert_contains "$related_output" "/repo/refresh-parent" "应该识别父项目关联"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 测试：inject-context 命令
 # ═══════════════════════════════════════════════════════════
 
@@ -331,6 +371,11 @@ test_export_creates_markdown_files
 
 # projects 命令测试
 test_projects_lists_projects
+
+# 项目关联命令测试
+test_related_projects_commands
+test_unlink_projects_command
+test_refresh_project_links_command
 
 # inject-context 命令测试
 test_inject_context_outputs_context

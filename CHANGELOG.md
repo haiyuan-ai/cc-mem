@@ -1,5 +1,20 @@
 # CC-mem 变更日志
 
+## [1.5.1] - 2026-03-07
+
+### ✨ Cross-Project Memory Linking
+
+- 新增 `project_links` 表，用于存储受控跨项目关联
+- 新增 `related-projects`、`link-projects`、`unlink-projects`、`refresh-project-links` 命令
+- `inject-context` 和 query recall 改为优先读取 `project_links`
+- 自动关联支持 Git worktree / 父子项目路径，手动关联可覆盖自动规则
+
+### 🧪 Testing
+
+- 新增 `project_links` 数据层测试
+- 新增项目关联 CLI 测试
+- 原有 related project 注入 / recall / worktree 回归测试继续通过
+
 ## [1.5.0] - 2026-03-07
 
 ### ✨ Major Improvements

@@ -243,6 +243,22 @@ CREATE INDEX IF NOT EXISTS idx_memories_auto_inject_policy ON memories(auto_inje
 CREATE INDEX IF NOT EXISTS idx_memories_project_root ON memories(project_root);
 CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_root ON sessions(project_root);
+
+CREATE TABLE IF NOT EXISTS project_links (
+    id TEXT PRIMARY KEY,
+    source_root TEXT NOT NULL,
+    target_root TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    strength INTEGER NOT NULL DEFAULT 50,
+    reason TEXT,
+    is_manual INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_links_pair ON project_links(source_root, target_root);
+CREATE INDEX IF NOT EXISTS idx_project_links_source ON project_links(source_root, strength DESC);
+CREATE INDEX IF NOT EXISTS idx_project_links_target ON project_links(target_root);
 EOF
 
     sqlite3 "$MEMORY_DB" <<EOF
@@ -409,6 +425,23 @@ CREATE TABLE IF NOT EXISTS projects (
     last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,
     tags TEXT
 );
+
+-- 项目关联表（用于受控跨项目记忆关联）
+CREATE TABLE IF NOT EXISTS project_links (
+    id TEXT PRIMARY KEY,
+    source_root TEXT NOT NULL,
+    target_root TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    strength INTEGER NOT NULL DEFAULT 50,
+    reason TEXT,
+    is_manual INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_links_pair ON project_links(source_root, target_root);
+CREATE INDEX IF NOT EXISTS idx_project_links_source ON project_links(source_root, strength DESC);
+CREATE INDEX IF NOT EXISTS idx_project_links_target ON project_links(target_root);
 
 -- 记忆历史表（记录记忆的创建/更新/删除事件）
 CREATE TABLE IF NOT EXISTS memory_history (
@@ -1154,54 +1187,209 @@ LIMIT $limit;
 EOF
 }
 
+make_project_link_id() {
+    local source_root="$1"
+    local target_root="$2"
+    local hash_input="${source_root}|${target_root}"
+    local short_hash=""
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        short_hash=$(printf "%s" "$hash_input" | sha256sum | cut -c1-16)
+    elif command -v shasum >/dev/null 2>&1; then
+        short_hash=$(printf "%s" "$hash_input" | shasum -a 256 | cut -c1-16)
+    elif command -v md5 >/dev/null 2>&1; then
+        short_hash=$(printf "%s" "$hash_input" | md5 | cut -c1-16)
+    elif command -v md5sum >/dev/null 2>&1; then
+        short_hash=$(printf "%s" "$hash_input" | md5sum | cut -c1-16)
+    else
+        short_hash=$(printf "%s" "${#hash_input}")
+    fi
+
+    echo "plink_${short_hash}"
+}
+
+known_project_roots() {
+    sqlite3 -noheader "$MEMORY_DB" "SELECT DISTINCT project_root FROM memories WHERE project_root IS NOT NULL AND project_root != '' UNION SELECT DISTINCT project_root FROM sessions WHERE project_root IS NOT NULL AND project_root != '' ORDER BY project_root;"
+}
+
+upsert_project_link() {
+    local source_root="$1"
+    local target_root="$2"
+    local link_type="$3"
+    local strength="${4:-50}"
+    local reason="$5"
+    local is_manual="${6:-0}"
+    local link_id=""
+    local source_escaped=""
+    local target_escaped=""
+    local type_escaped=""
+    local reason_escaped=""
+
+    [ -z "$source_root" ] && return
+    [ -z "$target_root" ] && return
+    [ "$source_root" = "$target_root" ] && return
+
+    link_id=$(make_project_link_id "$source_root" "$target_root")
+    source_escaped=$(sql_escape "$source_root")
+    target_escaped=$(sql_escape "$target_root")
+    type_escaped=$(sql_escape "$link_type")
+    reason_escaped=$(sql_escape "$reason")
+
+    sqlite3 "$MEMORY_DB" <<EOF
+INSERT INTO project_links (
+    id, source_root, target_root, link_type, strength, reason, is_manual, created_at, updated_at
+)
+VALUES (
+    '$(sql_escape "$link_id")', '$source_escaped', '$target_escaped', '$type_escaped',
+    $strength, '$reason_escaped', $is_manual, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+ON CONFLICT(source_root, target_root) DO UPDATE SET
+    link_type = CASE
+        WHEN project_links.is_manual = 1 AND excluded.is_manual = 0 THEN project_links.link_type
+        ELSE excluded.link_type
+    END,
+    strength = CASE
+        WHEN project_links.is_manual = 1 AND excluded.is_manual = 0 THEN project_links.strength
+        ELSE excluded.strength
+    END,
+    reason = CASE
+        WHEN project_links.is_manual = 1 AND excluded.is_manual = 0 THEN project_links.reason
+        ELSE excluded.reason
+    END,
+    is_manual = CASE
+        WHEN project_links.is_manual = 1 AND excluded.is_manual = 0 THEN project_links.is_manual
+        ELSE excluded.is_manual
+    END,
+    updated_at = CURRENT_TIMESTAMP;
+EOF
+}
+
+delete_project_link() {
+    local source_root="$1"
+    local target_root="$2"
+    local source_escaped=""
+    local target_escaped=""
+
+    [ -z "$source_root" ] && return
+    [ -z "$target_root" ] && return
+
+    source_escaped=$(sql_escape "$source_root")
+    target_escaped=$(sql_escape "$target_root")
+    sqlite3 "$MEMORY_DB" "DELETE FROM project_links WHERE source_root = '$source_escaped' AND target_root = '$target_escaped';"
+}
+
+delete_auto_project_links_for_root() {
+    local source_root="$1"
+    local source_escaped=""
+
+    [ -z "$source_root" ] && return
+    source_escaped=$(sql_escape "$source_root")
+    sqlite3 "$MEMORY_DB" "DELETE FROM project_links WHERE source_root = '$source_escaped' AND is_manual = 0;"
+}
+
+link_projects() {
+    local source_root="$1"
+    local target_root="$2"
+    local link_type="${3:-manual}"
+    local strength="${4:-95}"
+    local reason="${5:-manual link}"
+    local bidirectional="${6:-1}"
+
+    upsert_project_link "$source_root" "$target_root" "$link_type" "$strength" "$reason" 1
+    if [ "$bidirectional" = "1" ]; then
+        upsert_project_link "$target_root" "$source_root" "$link_type" "$strength" "$reason" 1
+    fi
+}
+
+unlink_projects() {
+    local source_root="$1"
+    local target_root="$2"
+    local bidirectional="${3:-1}"
+
+    delete_project_link "$source_root" "$target_root"
+    if [ "$bidirectional" = "1" ]; then
+        delete_project_link "$target_root" "$source_root"
+    fi
+}
+
+list_related_projects() {
+    local project_root="$1"
+    local limit="${2:-5}"
+    local min_strength="${3:-70}"
+    local project_root_escaped=""
+
+    [ -z "$project_root" ] && return
+    project_root_escaped=$(sql_escape "$project_root")
+
+    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT target_root, link_type, strength, reason, is_manual
+FROM project_links
+WHERE source_root = '$project_root_escaped'
+  AND strength >= $min_strength
+ORDER BY
+  strength DESC,
+  is_manual DESC,
+  target_root ASC
+LIMIT $limit;
+EOF
+}
+
+refresh_project_links() {
+    local project_path="$1"
+    local project_root=""
+    local current_common_dir=""
+    local current_git_root=""
+    local candidate_root=""
+    local candidate_common_dir=""
+    local candidate_git_root=""
+
+    project_root=$(resolve_project_root "$project_path")
+    [ -z "$project_root" ] && return
+
+    current_common_dir=$(resolve_git_common_dir "$project_path")
+    if command -v git >/dev/null 2>&1 && [ -d "$project_path" ]; then
+        current_git_root=$(git -C "$project_path" rev-parse --show-toplevel 2>/dev/null || true)
+    fi
+
+    delete_auto_project_links_for_root "$project_root"
+
+    while IFS= read -r candidate_root; do
+        [ -z "$candidate_root" ] && continue
+        [ "$candidate_root" = "$project_root" ] && continue
+
+        candidate_common_dir=$(resolve_git_common_dir "$candidate_root")
+        candidate_git_root=""
+        if command -v git >/dev/null 2>&1 && [ -d "$candidate_root" ]; then
+            candidate_git_root=$(git -C "$candidate_root" rev-parse --show-toplevel 2>/dev/null || true)
+        fi
+
+        if [ -n "$current_common_dir" ] && [ -n "$candidate_common_dir" ] && [ "$current_common_dir" = "$candidate_common_dir" ]; then
+            upsert_project_link "$project_root" "$candidate_root" "worktree" 100 "shared git common-dir" 0
+            upsert_project_link "$candidate_root" "$project_root" "worktree" 100 "shared git common-dir" 0
+            continue
+        fi
+
+        if [ -n "$current_git_root" ] && [ -n "$candidate_git_root" ] && [ "$current_git_root" = "$candidate_git_root" ] && [ "$candidate_root" != "$project_root" ]; then
+            upsert_project_link "$project_root" "$candidate_root" "same_repo" 90 "shared git root" 0
+            upsert_project_link "$candidate_root" "$project_root" "same_repo" 90 "shared git root" 0
+            continue
+        fi
+
+        if [[ "$candidate_root" == "$project_root"/* ]] || [[ "$project_root" == "$candidate_root"/* ]]; then
+            upsert_project_link "$project_root" "$candidate_root" "parent_child" 70 "parent/child project path" 0
+            upsert_project_link "$candidate_root" "$project_root" "parent_child" 70 "parent/child project path" 0
+        fi
+    done < <(known_project_roots)
+}
+
 resolve_related_projects() {
     local project_path="$1"
     local limit="${2:-1}"
-    local project_root
-    local project_root_escaped
-    local current_common_dir=""
-    local candidate=""
-    local candidate_common_dir=""
-    local related_list=""
-    local related_count=0
+    local project_root=""
 
     project_root=$(resolve_project_root "$project_path")
-    project_root_escaped=$(sql_escape "$project_root")
-
-    current_common_dir=$(resolve_git_common_dir "$project_path")
-    if [ -n "$current_common_dir" ]; then
-        while IFS= read -r candidate; do
-            [ -z "$candidate" ] && continue
-            [ "$candidate" = "$project_root" ] && continue
-
-            candidate_common_dir=$(resolve_git_common_dir "$candidate")
-            if [ -n "$candidate_common_dir" ] && [ "$candidate_common_dir" = "$current_common_dir" ]; then
-                related_list="${related_list}${candidate}"$'\n'
-                related_count=$((related_count + 1))
-                if [ "$related_count" -ge "$limit" ]; then
-                    printf "%s" "$related_list"
-                    return
-                fi
-            fi
-        done < <(sqlite3 -noheader "$MEMORY_DB" "SELECT DISTINCT project_root FROM memories WHERE project_root IS NOT NULL AND project_root != '' UNION SELECT DISTINCT project_root FROM sessions WHERE project_root IS NOT NULL AND project_root != '';")
-    fi
-
-    sqlite3 -noheader "$MEMORY_DB" <<EOF
-SELECT DISTINCT project_root
-FROM memories
-WHERE project_root IS NOT NULL
-  AND project_root != ''
-  AND project_root != '$project_root_escaped'
-  AND (
-      project_root LIKE '$project_root_escaped/%'
-      OR '$project_root_escaped' LIKE project_root || '/%'
-  )
-ORDER BY
-  CASE WHEN '$project_root_escaped' LIKE project_root || '/%' THEN 1 ELSE 2 END,
-  LENGTH(project_root) ASC,
-  project_root ASC
-LIMIT $limit;
-EOF
+    refresh_project_links "$project_path" >/dev/null 2>&1 || true
+    list_related_projects "$project_root" "$limit" 70 | cut -d'|' -f1
 }
 
 # 计算记忆的 SessionStart 排序分数

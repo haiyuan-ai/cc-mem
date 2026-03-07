@@ -7,8 +7,8 @@
   "plugins": [
     {
       "name": "cc-mem",
-      "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，零额外依赖",
-      "version": "1.4.0",
+      "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，核心依赖 SQLite",
+      "version": "1.5.1",
       "author": {
         "name": "haiyuan-ai"
       },

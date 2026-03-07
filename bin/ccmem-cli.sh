@@ -59,6 +59,10 @@ CC-Mem CLI - Claude Code 记忆管理工具
   export            导出记忆到 Markdown
   inject-context    生成开场注入上下文
   projects          列出所有项目
+  related-projects  列出关联项目
+  link-projects     手动建立项目关联
+  unlink-projects   删除项目关联
+  refresh-project-links 刷新自动项目关联
   cleanup           清理过期记忆
   status            显示记忆库状态
   help              显示此帮助信息
@@ -69,6 +73,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   ccmem-cli.sh get mem_123 mem_456
   ccmem-cli.sh capture -c "decision" -t "important,core"
   ccmem-cli.sh export -o "~/exports"
+  ccmem-cli.sh related-projects -p "/path/to/project"
 选项:
   -p, --project     项目路径
   -c, --category    记忆类别 (decision|solution|pattern|debug|context)
@@ -390,6 +395,148 @@ cmd_projects() {
     list_projects
 }
 
+cmd_related_projects() {
+    local project_path=""
+    local limit=5
+    local min_strength=70
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -p|--project) project_path="$2"; shift ;;
+            -l|--limit) limit="$2"; shift ;;
+            --min-strength) min_strength="$2"; shift ;;
+            -h|--help)
+                echo "用法：ccmem related-projects [-p project] [-l limit] [--min-strength score]"
+                return
+                ;;
+            *) echo "未知选项：$1"; return 1 ;;
+        esac
+        shift
+    done
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    refresh_project_links "$project_path" >/dev/null 2>&1 || true
+
+    local project_root
+    project_root=$(resolve_project_root "$project_path")
+    echo "=== 关联项目 ==="
+    echo "主项目：$project_root"
+    echo ""
+    printf "%-40s %-14s %-8s %s\n" "target_root" "link_type" "strength" "reason"
+    list_related_projects "$project_root" "$limit" "$min_strength" | awk -F'|' '
+    {
+        printf "%-40s %-14s %-8s %s\n", $1, $2, $3, $4
+    }'
+}
+
+cmd_link_projects() {
+    local source_root=""
+    local target_root=""
+    local link_type="manual"
+    local strength=95
+    local reason="manual link"
+    local bidirectional=1
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --type) link_type="$2"; shift ;;
+            --strength) strength="$2"; shift ;;
+            --reason) reason="$2"; shift ;;
+            --one-way) bidirectional=0 ;;
+            -h|--help)
+                echo "用法：ccmem link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
+                return
+                ;;
+            *)
+                if [ -z "$source_root" ]; then
+                    source_root="$1"
+                elif [ -z "$target_root" ]; then
+                    target_root="$1"
+                else
+                    echo "未知参数：$1"
+                    return 1
+                fi
+                ;;
+        esac
+        shift
+    done
+
+    if [ -z "$source_root" ] || [ -z "$target_root" ]; then
+        echo "用法：ccmem link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
+        return 1
+    fi
+
+    link_projects "$source_root" "$target_root" "$link_type" "$strength" "$reason" "$bidirectional"
+    echo "项目关联已建立：$source_root -> $target_root ($link_type, strength=$strength)"
+    if [ "$bidirectional" = "1" ]; then
+        echo "已同步建立反向关联"
+    fi
+}
+
+cmd_unlink_projects() {
+    local source_root=""
+    local target_root=""
+    local bidirectional=1
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --one-way) bidirectional=0 ;;
+            -h|--help)
+                echo "用法：ccmem unlink-projects <source_root> <target_root> [--one-way]"
+                return
+                ;;
+            *)
+                if [ -z "$source_root" ]; then
+                    source_root="$1"
+                elif [ -z "$target_root" ]; then
+                    target_root="$1"
+                else
+                    echo "未知参数：$1"
+                    return 1
+                fi
+                ;;
+        esac
+        shift
+    done
+
+    if [ -z "$source_root" ] || [ -z "$target_root" ]; then
+        echo "用法：ccmem unlink-projects <source_root> <target_root> [--one-way]"
+        return 1
+    fi
+
+    unlink_projects "$source_root" "$target_root" "$bidirectional"
+    echo "项目关联已删除：$source_root -> $target_root"
+    if [ "$bidirectional" = "1" ]; then
+        echo "已同步删除反向关联"
+    fi
+}
+
+cmd_refresh_project_links() {
+    local project_path=""
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -p|--project) project_path="$2"; shift ;;
+            -h|--help)
+                echo "用法：ccmem refresh-project-links [-p project]"
+                return
+                ;;
+            *) echo "未知选项：$1"; return 1 ;;
+        esac
+        shift
+    done
+
+    if [ -z "$project_path" ]; then
+        project_path="$(pwd)"
+    fi
+
+    refresh_project_links "$project_path"
+    echo "已刷新项目关联：$(resolve_project_root "$project_path")"
+}
+
 # 查看记忆历史
 cmd_history() {
     local memory_id=""
@@ -607,6 +754,18 @@ main() {
             ;;
         projects)
             cmd_projects
+            ;;
+        related-projects)
+            cmd_related_projects "$@"
+            ;;
+        link-projects)
+            cmd_link_projects "$@"
+            ;;
+        unlink-projects)
+            cmd_unlink_projects "$@"
+            ;;
+        refresh-project-links)
+            cmd_refresh_project_links "$@"
             ;;
         cleanup)
             cmd_cleanup "$@"

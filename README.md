@@ -701,7 +701,7 @@ ccmem-cli.sh capture -t "important,architecture,database"
 | 特性 | **CC-mem** | claude-mem | memU | mem0 |
 |------|------------|------------|------|------|
 | **实现语言** | Bash | TypeScript | Python | Python |
-| **依赖要求** | SQLite（完整 hooks 体验建议安装 `jq`） | Node/Bun + SQLite + Chroma | Python | Python |
+| **依赖要求** | SQLite | Node/Bun + SQLite + Chroma | Python | Python |
 | **数据库** | SQLite + FTS5 | SQLite + FTS5 + Chroma | SQLite / Postgres / pgvector | 向量数据库为主 |
 | **向量检索** | ❌ | ✅ Chroma 混合检索 | ✅ pgvector / 向量检索 | ✅ 多种向量后端 |
 | **记忆历史** | ✅ | ✅ | ✅ | ✅ |

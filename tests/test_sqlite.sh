@@ -510,10 +510,10 @@ test_generate_epoch_timestamp() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# 测试：SessionStart 上下文生成
+# 测试：开场注入上下文生成
 # ═══════════════════════════════════════════════════════════
 
-describe "SessionStart 上下文生成"
+describe "开场注入上下文生成"
 
 it "应该能获取项目最近记忆"
 test_get_recent_project_memories() {
@@ -557,7 +557,7 @@ test_generate_sessionstart_context() {
     # 存储测试数据
     store_memory "s1" "/test/context" "decision" "测试决策内容" "测试决策摘要" "test" ""
 
-    local result=$(generate_sessionstart_context "/test/context" 1)
+    local result=$(generate_injection_context "/test/context" 1)
     assert_contains "$result" "<cc-mem-context>" "应该包含上下文标签"
     assert_contains "$result" "Recent High-Value Memory" "应该包含高价值记忆部分"
     assert_contains "$result" "/test/context" "应该包含项目路径"
@@ -573,7 +573,7 @@ test_sessionstart_related_project_memory() {
     store_memory "s1" "$child_path" "decision" "子项目内容" "子项目摘要" "" "" "manual" "" "" "$child_root"
     store_memory "s2" "$parent_path" "pattern" "父项目内容" "父项目模式摘要" "" "" "manual" "" "" "$parent_root"
 
-    local result=$(generate_sessionstart_context "$child_path" 2)
+    local result=$(generate_injection_context "$child_path" 2)
     assert_contains "$result" "Related Project Memory" "应该包含 related project 区块"
     assert_contains "$result" "父项目模式摘要" "应该补充 related project 记忆"
     assert_contains "$result" "$parent_root" "应该标明 related project 路径"
@@ -586,14 +586,14 @@ test_sessionstart_timeline_hint() {
     store_memory "t2" "$project" "debug" "继续排查 recall 漏注入" "继续排查 recall 漏注入" "" ""
     store_memory "t3" "$project" "solution" "补上 timeline hint 输出" "补上 timeline hint 输出" "" ""
 
-    local result=$(generate_sessionstart_context "$project" 3)
+    local result=$(generate_injection_context "$project" 3)
     assert_contains "$result" "Recent Timeline Hint" "连续调试时应该出现 timeline hint"
     assert_contains "$result" "补上 timeline hint 输出" "timeline hint 应该包含最近脉络"
 }
 
 it "生成的上下文应该包含时间戳"
 test_sessionstart_context_timestamp() {
-    local result=$(generate_sessionstart_context "/test" 1)
+    local result=$(generate_injection_context "/test" 1)
     assert_contains "$result" "Updated:" "应该包含更新时间"
 }
 
@@ -604,7 +604,7 @@ test_sessionstart_priority_order() {
     store_memory "p1" "/test/priority" "context" "低优先级内容" "低优先级摘要" "" ""
     store_memory "p2" "/test/priority" "decision" "高优先级内容" "高优先级决策" "" ""
 
-    local result=$(generate_sessionstart_context "/test/priority" 1)
+    local result=$(generate_injection_context "/test/priority" 1)
     # 应该优先选择 decision
     if echo "$result" | grep -q "高优先级决策"; then
         assert_true "true" "高优先级类别应该被优先选择"

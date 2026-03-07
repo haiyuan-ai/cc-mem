@@ -385,6 +385,34 @@ EOF
     cleanup_hooks_test
 }
 
+it "应该压缩超长最终回复"
+test_stop_condenses_long_final_response() {
+    setup_hooks_test
+    local test_dir="/tmp/ccmem_stop_long_reply_$$"
+    mkdir -p "$test_dir"
+
+    local repeated
+    repeated=$(printf '补充说明段落。%.0s' $(seq 1 120))
+    cat > "$test_dir/transcript.jsonl" <<EOF
+{"type": "assistant", "message": {"content": "任务完成总结\\n1. 修复了搜索逻辑\\n2. 增加了中文 fallback\\n3. 补充了回归测试\\n${repeated}\\n最终建议继续观察 recall 命中质量"}}
+EOF
+
+    local input="{\"session_id\": \"$TEST_SESSION_ID\", \"transcript_path\": \"$test_dir/transcript.jsonl\", \"cwd\": \"$test_dir\"}"
+    echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+
+    local saved_content
+    saved_content=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE source='stop_final_response' ORDER BY rowid DESC LIMIT 1;")
+    local content_length
+    content_length=$(sqlite3 "$TEST_DB" "SELECT LENGTH(content) FROM memories WHERE source='stop_final_response' ORDER BY rowid DESC LIMIT 1;")
+
+    assert_contains "$saved_content" "关键点:" "长回复应该被裁剪成关键点格式"
+    assert_contains "$saved_content" "1. 修复了搜索逻辑" "应该保留关键条目"
+    assert_less_than 1400 "$content_length" "裁剪后的最终回复应该明显短于原文"
+
+    rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log"
+    cleanup_hooks_test
+}
+
 describe "批量保存阈值"
 
 it "应该累积记录直到阈值"
@@ -404,6 +432,43 @@ test_batch_save_threshold() {
     assert_equals "5" "$line_count" "应该有 5 条记录"
 
     rm -f "$log_file"
+    cleanup_hooks_test
+}
+
+it "session-end 应该压缩超长操作日志"
+test_session_end_condenses_long_log() {
+    setup_hooks_test
+    local test_dir="/tmp/ccmem_session_end_$$"
+    local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
+    mkdir -p "$test_dir"
+
+    cat > "$log_file" <<'EOF'
+[FILE_CHANGE] src/a.js: 修改 A
+[FILE_CHANGE] src/b.js: 修改 B
+[FILE_CHANGE] src/c.js: 修改 C
+[FILE_CHANGE] src/d.js: 修改 D
+[FILE_CHANGE] src/e.js: 修改 E
+[FILE_CHANGE] src/f.js: 修改 F
+[BASH] npm test: 运行测试
+[BASH] npm run lint: 运行 lint
+[BASH] git diff: 查看差异
+[BASH] npm run build: 构建
+[FILE_CHANGE] src/g.js: 修改 G
+[FILE_CHANGE] src/h.js: 修改 H
+[FILE_CHANGE] src/i.js: 修改 I
+EOF
+
+    export PWD="$test_dir"
+    local input="{\"session_id\": \"$TEST_SESSION_ID\"}"
+    echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+
+    local saved_content
+    saved_content=$(sqlite3 "$TEST_DB" "SELECT content FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
+    assert_contains "$saved_content" "操作摘要: Files=" "超长日志应该被压缩为操作摘要"
+    assert_contains "$saved_content" "最近文件变更:" "应该保留文件变更摘要"
+    assert_contains "$saved_content" "最近命令:" "应该保留命令摘要"
+
+    rm -rf "$test_dir" "$log_file"
     cleanup_hooks_test
 }
 
@@ -472,9 +537,11 @@ test_user_prompt_submit_outputs_recall_context
 test_stop_extract_last_message
 test_stop_no_transcript
 test_stop_generate_summary
+test_stop_condenses_long_final_response
 
 # 批量保存阈值测试
 test_batch_save_threshold
+test_session_end_condenses_long_log
 
 # Hooks 配置测试
 test_hooks_config_exists

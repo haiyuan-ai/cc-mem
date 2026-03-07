@@ -11,8 +11,8 @@ source "$SCRIPT_DIR/tests/test_framework.sh"
 # 加载 sqlite.sh（数据库操作库）
 source "$SCRIPT_DIR/lib/sqlite.sh"
 
-# 加载 llm.sh（LLM 相关函数库）
-source "$SCRIPT_DIR/lib/llm.sh"
+# 加载 content_utils.sh（文本处理函数库）
+source "$SCRIPT_DIR/lib/content_utils.sh"
 
 # 设置测试环境（加载 sqlite.sh 并初始化数据库）
 setup_test_db
@@ -290,19 +290,10 @@ test_invalid_category() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# LLM 和私有内容测试
+# 私有内容测试
 # ═══════════════════════════════════════════════════════════
 
-describe "LLM 和私有内容测试"
-
-it "应该能加载 LLM profile"
-test_load_llm_profile_compression() {
-    # 测试 load_llm_profile 函数
-    local result=$(load_llm_profile "compression")
-    assert_not_empty "$result" "应该返回 profile 信息"
-    # 返回格式应该是 provider|model|max_tokens
-    assert_contains "$result" "|" "应该返回正确格式"
-}
+describe "私有内容测试"
 
 it "应该能过滤私有内容"
 test_filter_private_content() {
@@ -333,47 +324,6 @@ test_has_private_content() {
     else
         assert_true "true" "不应该检测到私有内容"
     fi
-}
-
-# ═══════════════════════════════════════════════════════════
-# LLM 内部函数测试
-# ═══════════════════════════════════════════════════════════
-
-describe "LLM 内部函数测试"
-
-it "应该能识别类别"
-test_detect_category() {
-    # 测试 debug 类别
-    local result1=$(detect_category "error exception bug fix")
-    assert_equals "debug" "$result1" "应该识别 debug 类别"
-
-    # 测试 solution 类别
-    local result2=$(detect_category "solution resolve workaround implement")
-    assert_equals "solution" "$result2" "应该识别 solution 类别"
-
-    # 测试 decision 类别
-    local result3=$(detect_category "decision choose select decide")
-    assert_equals "decision" "$result3" "应该识别 decision 类别"
-
-    # 测试 context 类别（默认）
-    local result4=$(detect_category "普通内容")
-    assert_equals "context" "$result4" "应该返回 context 类别"
-}
-
-it "应该能提取标签"
-test_extract_tags() {
-    local result=$(extract_tags "Python JavaScript Docker Kubernetes AWS Git SQL Linux")
-    assert_not_empty "$result" "应该返回标签"
-    assert_contains "$result" "python" "应该包含 python 标签"
-    assert_contains "$result" "docker" "应该包含 docker 标签"
-}
-
-it "应该能生成摘要"
-test_generate_summary() {
-    local result=$(generate_summary "这是第一行内容\n这是第二行" 20)
-    assert_not_empty "$result" "应该返回摘要"
-    # 摘要应该以第一行开头
-    assert_contains "$result" "这是第一行" "应该包含第一行"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -419,15 +369,9 @@ test_duplicate_detection_boundary
 test_database_lock
 test_invalid_category
 
-# LLM 和私有内容测试
-test_load_llm_profile_compression
+# 私有内容测试
 test_filter_private_content
 test_has_private_content
-
-# LLM 内部函数测试
-test_detect_category
-test_extract_tags
-test_generate_summary
 
 # 打印测试报告
 print_summary

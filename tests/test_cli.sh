@@ -255,16 +255,16 @@ test_projects_lists_projects() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# 测试：sessionstart 命令
+# 测试：inject-context 命令
 # ═══════════════════════════════════════════════════════════
 
-describe "sessionstart 命令"
+describe "inject-context 命令"
 
 it "应该生成结构化上下文"
-test_sessionstart_outputs_context() {
+test_inject_context_outputs_context() {
     echo "SessionStart CLI 内容" | "$CLI" capture -p "/tmp/sessionstart-cli" -c "decision" -t "cli" > /dev/null 2>&1
 
-    local result=$("$CLI" sessionstart -p "/tmp/sessionstart-cli" -l 2 2>&1)
+    local result=$("$CLI" inject-context -p "/tmp/sessionstart-cli" -l 2 2>&1)
     assert_contains "$result" "<cc-mem-context>" "应该输出上下文标签"
     assert_contains "$result" "Recent High-Value Memory" "应该包含高价值记忆部分"
     assert_true "[[ ! \"$result\" == *\"搜索记忆\"* ]]" "不应该输出搜索命令标题"
@@ -332,8 +332,8 @@ test_export_creates_markdown_files
 # projects 命令测试
 test_projects_lists_projects
 
-# sessionstart 命令测试
-test_sessionstart_outputs_context
+# inject-context 命令测试
+test_inject_context_outputs_context
 
 # 错误处理测试
 test_unknown_command

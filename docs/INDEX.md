@@ -27,7 +27,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [TEST-REPORT.md](../tests/TEST-REPORT.md) | 测试报告与覆盖总结（135 个测试 100% 通过） |
+| [TEST-REPORT.md](../tests/TEST-REPORT.md) | 测试报告与覆盖总结 |
 
 ---
 
@@ -48,17 +48,17 @@ cc-mem/
 │   └── GIT-BASH-TEST.md      # Git Bash 测试（89 行精简版）
 ├── tests/
 │   ├── TEST-REPORT.md        # 测试报告（135 个用例）
-│   ├── test_sqlite.sh        # SQLite 测试（66 个函数）
-│   ├── test_cli.sh           # CLI 测试（40 个函数）
-│   ├── test_edge_cases.sh    # 边界测试（56 个函数）
-│   ├── test_hooks.sh         # Hooks 功能测试（22 个函数）
+│   ├── test_sqlite.sh        # SQLite 测试
+│   ├── test_cli.sh           # CLI 测试
+│   ├── test_edge_cases.sh    # 边界测试
+│   ├── test_hooks.sh         # Hooks 功能测试
 │   ├── test_framework.sh     # 测试框架（12 个函数）
 │   └── run_tests.sh          # 测试运行器
 ├── bin/
-│   └── ccmem-cli.sh          # CLI 工具 (625 行)
+│   └── ccmem-cli.sh          # CLI 工具
 ├── lib/
-│   ├── sqlite.sh             # SQLite 操作库 (623 行，20 个函数)
-│   └── llm.sh                # LLM 压缩功能 (329 行，12 个函数)
+│   ├── sqlite.sh             # SQLite 操作库
+│   └── content_utils.sh      # 概念识别与私有内容过滤
 ├── hooks/
 │   ├── hooks.json            # Hooks 配置（插件级别，自动加载）
 │   ├── session-start.sh      # SessionStart Hook
@@ -90,7 +90,7 @@ cc-mem/
 ## 版本信息
 
 **核心功能**:
-- 自动捕获与语义压缩
+- 自动捕获与本地裁剪
 - SQLite 持久化存储 + FTS5 全文检索
 - 三层检索（search → timeline → get）
 - 内容哈希去重

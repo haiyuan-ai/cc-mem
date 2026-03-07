@@ -18,8 +18,7 @@
 | 依赖 | 用途 | 缺失时的回退方案 |
 |------|------|-----------------|
 | perl | 私有内容过滤 | 使用 sed 简单模式 |
-| jq | JSON 处理 | 仅用于 LLM API 响应解析 |
-| curl | LLM API 调用 | 仅使用 API 功能时需要 |
+| jq | JSON 处理 | Hooks 输入解析依赖 |
 | du | 数据库大小显示 | 使用 stat 命令替代 |
 
 ## 安装方法
@@ -37,7 +36,7 @@ brew install jq
 ```bash
 # 安装依赖
 sudo apt-get update
-sudo apt-get install -y sqlite3 jq curl perl
+sudo apt-get install -y sqlite3 jq perl
 
 # 如果 Bash 版本 < 4.0，建议升级
 sudo apt-get install -y bash

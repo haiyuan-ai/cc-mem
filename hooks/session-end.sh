@@ -62,6 +62,11 @@ if [ -f "$CLI" ]; then
         echo "[session-end] $(date): LOG_FILE content exists, capturing..." >> "$DEBUG_LOG"
 
         if [ -n "$CONTENT" ]; then
+            if should_condense_operation_log "$CONTENT"; then
+                CONTENT=$(summarize_operation_log "$CONTENT")
+                echo "[session-end] $(date): Condensed long operation log before capture" >> "$DEBUG_LOG"
+            fi
+
             # 确定类别
             CATEGORY="context"
             if echo "$CONTENT" | grep -qi "error\|fix\|debug\|fail"; then

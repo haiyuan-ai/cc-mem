@@ -36,7 +36,7 @@ Claude Code 轻量级记忆管理系统
 - **自动捕获**：PostToolUse / Stop / SessionEnd 自动沉淀工作过程
 - **实时注入**：SessionStart 预热上下文 + UserPromptSubmit query-aware recall
 - **分层记忆**：按来源、生命周期和自动注入资格组织记忆
-- **语义压缩**：使用 LLM 或本地规则压缩会话内容
+- **自动裁剪**：Stop / SessionEnd 会对超长回复和日志做本地裁剪
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
 - **Markdown 导出**：导出为标准 Markdown 文件（不需要 Obsidian）
@@ -224,9 +224,6 @@ ccmem-cli.sh get mem_123 mem_456
 # 列出最近记忆
 ccmem-cli.sh list
 
-# 语义压缩
-echo "长文本内容" | ccmem-cli.sh compress
-
 # 手动创建记忆
 ccmem-cli.sh store -p "/path/to/project" -c "pattern" -t "tag" -m "摘要"
 
@@ -236,8 +233,8 @@ ccmem-cli.sh export -o "~/exports"
 # 生成项目上下文
 ccmem-cli.sh context
 
-# 生成 SessionStart 预热上下文
-ccmem-cli.sh sessionstart -p "/path/to/project" -l 3
+# 生成开场注入上下文
+ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 
 # 列出所有项目
 ccmem-cli.sh projects
@@ -292,19 +289,6 @@ ccmem-cli.sh search -p "/path/to/project" -q "API" -c "solution" -l 5
 - 英文/普通关键词优先走 FTS5
 - 中文查询会自动启用 `LIKE` fallback
 - `search` 更适合找候选记忆，细节可继续用 `timeline` 和 `get`
-
-#### compress - 语义压缩
-
-```bash
-# 本地压缩（快速）
-cat session_log.txt | ccmem-cli.sh compress
-
-# LLM 压缩（需要 API Key）
-cat session_log.txt | ccmem-cli.sh compress --llm
-
-# 输出到文件
-cat session_log.txt | ccmem-cli.sh compress -o compressed.txt
-```
 
 #### export - 导出记忆
 
@@ -364,11 +348,11 @@ ccmem-cli.sh context -p "/path/to/project"
 ccmem-cli.sh context -o "/path/to/CLAUDE.md"
 ```
 
-#### sessionstart - 生成结构化启动上下文
+#### inject-context - 生成结构化开场上下文
 
 ```bash
-# 生成当前项目的 SessionStart 预热上下文
-ccmem-cli.sh sessionstart -p "/path/to/project" -l 3
+# 生成当前项目的开场注入上下文
+ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 ```
 
 输出特点：

@@ -271,6 +271,93 @@ count_result_rows() {
     echo "$results" | grep '^mem_' 2>/dev/null | wc -l | tr -d ' '
 }
 
+should_condense_operation_log() {
+    local content="$1"
+    local line_count=0
+
+    [ -z "$content" ] && return 1
+    line_count=$(printf "%s\n" "$content" | wc -l | tr -d ' ')
+
+    if [ "${#content}" -gt 1500 ] || [ "$line_count" -gt 12 ]; then
+        return 0
+    fi
+
+    return 1
+}
+
+summarize_operation_log() {
+    local content="$1"
+    local max_items="${2:-4}"
+    local file_change_count=0
+    local bash_count=0
+    local file_changes=""
+    local bash_commands=""
+
+    if [ -z "$content" ]; then
+        echo ""
+        return
+    fi
+
+    file_change_count=$(printf "%s\n" "$content" | grep '^\[FILE_CHANGE\]' 2>/dev/null | wc -l | tr -d ' ')
+    bash_count=$(printf "%s\n" "$content" | grep '^\[BASH\]' 2>/dev/null | wc -l | tr -d ' ')
+
+    file_changes=$(printf "%s\n" "$content" | grep '^\[FILE_CHANGE\]' 2>/dev/null | tail -n "$max_items" | sed 's/^\[FILE_CHANGE\] /- /')
+    bash_commands=$(printf "%s\n" "$content" | grep '^\[BASH\]' 2>/dev/null | tail -n "$max_items" | sed 's/^\[BASH\] /- /')
+
+    echo "操作摘要: Files=${file_change_count} Bash=${bash_count}"
+
+    if [ -n "$file_changes" ]; then
+        echo ""
+        echo "最近文件变更:"
+        printf "%s\n" "$file_changes"
+    fi
+
+    if [ -n "$bash_commands" ]; then
+        echo ""
+        echo "最近命令:"
+        printf "%s\n" "$bash_commands"
+    fi
+}
+
+condense_final_response() {
+    local content="$1"
+    local max_chars="${2:-1200}"
+    local first_line=""
+    local key_points=""
+    local last_line=""
+    local condensed=""
+
+    if [ -z "$content" ]; then
+        echo ""
+        return
+    fi
+
+    first_line=$(printf "%s\n" "$content" | grep -v '^[[:space:]]*$' | head -1)
+    key_points=$(printf "%s\n" "$content" | grep -E '^[[:space:]]*([-*•]|[0-9]+[.)])[[:space:]]+' 2>/dev/null | head -n 5)
+
+    if [ -z "$key_points" ]; then
+        key_points=$(printf "%s\n" "$content" | grep -E '修复|增加|改为|支持|处理|优化|回退|测试|结论|原因|问题' 2>/dev/null | grep -v '^[[:space:]]*$' | head -n 5 | sed 's/^/- /')
+    fi
+
+    last_line=$(printf "%s\n" "$content" | grep -v '^[[:space:]]*$' | tail -1)
+
+    condensed="$first_line"
+
+    if [ -n "$key_points" ]; then
+        condensed="${condensed}"$'\n\n'"关键点:"$'\n'"$key_points"
+    fi
+
+    if [ -n "$last_line" ] && [ "$last_line" != "$first_line" ]; then
+        condensed="${condensed}"$'\n\n'"结尾:"$'\n'"$last_line"
+    fi
+
+    if [ "${#condensed}" -gt "$max_chars" ]; then
+        condensed="${condensed:0:$max_chars}..."
+    fi
+
+    echo "$condensed"
+}
+
 RETRIEVE_CJK_FALLBACK_USED=0
 
 # 初始化数据库
@@ -1551,8 +1638,8 @@ generate_query_recall_context() {
     echo "</cc-mem-recall>"
 }
 
-# 生成 SessionStart 上下文
-generate_sessionstart_context() {
+# 生成开场注入上下文
+generate_injection_context() {
     local project_path="$1"
     local limit="${2:-3}"
 

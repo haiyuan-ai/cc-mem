@@ -48,11 +48,6 @@ else
     exit 1
 fi
 
-if [ -f "$PLUGIN_DIR/lib/llm.sh" ]; then
-    source "$PLUGIN_DIR/lib/llm.sh"
-    echo "[stop] $(date): Loaded llm.sh" >> "$DEBUG_LOG"
-fi
-
 # 从 transcript 文件提取最后一条助手消息
 extract_last_assistant_message() {
     local transcript_path="$1"
@@ -163,6 +158,10 @@ main() {
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         operation_log=$(cat "$LOG_FILE")
         echo "[stop] $(date): Found operation log, length=${#operation_log}" >> "$DEBUG_LOG"
+        if should_condense_operation_log "$operation_log"; then
+            operation_log=$(summarize_operation_log "$operation_log")
+            echo "[stop] $(date): Condensed long operation log before capture" >> "$DEBUG_LOG"
+        fi
     fi
 
     # 生成会话摘要
@@ -224,9 +223,9 @@ EOF
             filtered_message=$(echo "$filtered_message" | perl -0777 -pe 's/<private>.*?<\/private>//gs')
         fi
 
-        # 压缩内容（如果太长）
-        if [ "${#filtered_message}" -gt 1000 ]; then
-            filtered_message="${filtered_message:0:1000}..."
+        # 长回复进行结果导向裁剪，避免直接硬截断。
+        if [ "${#filtered_message}" -gt 800 ]; then
+            filtered_message=$(condense_final_response "$filtered_message" 1200)
         fi
 
         # 保存为记忆

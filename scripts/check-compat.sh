@@ -59,8 +59,7 @@ echo ""
 echo "=== 可选功能依赖 ==="
 check_command "perl" "optional"  # 私有内容过滤
 check_command "du" "optional"    # 数据库大小
-check_command "jq" "optional"    # JSON 处理
-check_command "curl" "optional"  # LLM API
+check_command "jq" "optional"    # Hooks JSON 解析
 
 # 检查 date 命令兼容性
 echo ""

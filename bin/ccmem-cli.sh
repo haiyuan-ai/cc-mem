@@ -15,7 +15,7 @@ CONFIG_DIR="$SCRIPT_DIR/config"
 
 # 加载 SQLite 函数库
 source "$LIB_DIR/sqlite.sh"
-source "$LIB_DIR/llm.sh"
+source "$LIB_DIR/content_utils.sh"
 
 # 加载配置
 load_config() {
@@ -51,7 +51,6 @@ CC-Mem CLI - Claude Code 记忆管理工具
   init              初始化数据库
   capture           捕获当前会话记忆
   store             手动存储一条记忆
-  compress          语义压缩会话内容
   search            搜索记忆（三层检索第一步）
   timeline          获取时间线上下文（三层检索第二步）
   get               获取记忆详情（三层检索第三步）
@@ -59,7 +58,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   list              列出最近的记忆
   export            导出记忆到 Markdown
   context           生成项目 CLAUDE.md 上下文
-  sessionstart      生成 SessionStart 上下文注入
+  inject-context    生成开场注入上下文
   projects          列出所有项目
   cleanup           清理过期记忆
   status            显示记忆库状态
@@ -245,66 +244,6 @@ cmd_store() {
         return 1
     else
         echo "记忆已存储：$id"
-    fi
-}
-
-# 语义压缩
-cmd_compress() {
-    local input_file=""
-    local use_llm="false"
-    local llm_profile="compression"
-    local output_file=""
-
-    while [[ "$#" -gt 0 ]]; do
-        case $1 in
-            -i|--input) input_file="$2"; shift ;;
-            --llm) use_llm="true"; shift ;;
-            --profile) llm_profile="$2"; shift ;;
-            -o|--output) output_file="$2"; shift ;;
-            -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
-        esac
-        shift
-    done
-
-    local content=""
-
-    # 从文件读取或 stdin
-    if [ -n "$input_file" ] && [ -f "$input_file" ]; then
-        content=$(cat "$input_file")
-    elif [ ! -t 0 ]; then
-        content=$(cat)
-    else
-        echo "用法：ccmem-cli.sh compress -i <input_file> [--llm] [--profile compression] [-o output]"
-        echo "      echo 'content' | ccmem-cli.sh compress"
-        return 1
-    fi
-
-    if [ -z "$content" ]; then
-        echo "错误：输入内容为空"
-        return 1
-    fi
-
-    echo "压缩内容..."
-    echo "  模式：$([ "$use_llm" = "true" ] && echo "LLM ($llm_profile)" || echo "本地")"
-    local compressed=$(compress_memory "$content" "$use_llm" "$llm_profile")
-    local category=$(detect_category "$content")
-    local tags=$(extract_tags "$content")
-    local summary=$(generate_summary "$content")
-
-    echo ""
-    echo "=== 压缩结果 ==="
-    echo "类别：$category"
-    echo "标签：$tags"
-    echo "摘要：$summary"
-    echo ""
-    echo "内容:"
-    echo "$compressed"
-
-    if [ -n "$output_file" ]; then
-        echo "$compressed" > "$output_file"
-        echo ""
-        echo "已保存到：$output_file"
     fi
 }
 
@@ -627,8 +566,8 @@ cmd_status() {
     echo "脚本目录：$SCRIPT_DIR"
 }
 
-# SessionStart 上下文生成
-cmd_sessionstart() {
+# 开场注入上下文生成
+cmd_inject_context() {
     local project_path=""
     local limit=3
 
@@ -637,8 +576,8 @@ cmd_sessionstart() {
             -p|--project) project_path="$2"; shift ;;
             -l|--limit) limit="$2"; shift ;;
             -h|--help)
-                echo "用法：ccmem sessionstart [-p project] [-l limit]"
-                echo "生成 SessionStart 上下文注入"
+                echo "用法：ccmem inject-context [-p project] [-l limit]"
+                echo "生成开场注入上下文"
                 echo ""
                 echo "选项："
                 echo "  -p, --project    项目路径（默认当前目录）"
@@ -654,7 +593,7 @@ cmd_sessionstart() {
         project_path="$(pwd)"
     fi
 
-    generate_sessionstart_context "$project_path" "$limit"
+    generate_injection_context "$project_path" "$limit"
 }
 
 # 主函数
@@ -681,9 +620,6 @@ main() {
             ;;
         store)
             cmd_store "$@"
-            ;;
-        compress)
-            cmd_compress "$@"
             ;;
         search)
             cmd_search "$@"
@@ -715,8 +651,8 @@ main() {
         status)
             cmd_status
             ;;
-        sessionstart)
-            cmd_sessionstart "$@"
+        inject-context)
+            cmd_inject_context "$@"
             ;;
         help|--help|-h)
             show_help

@@ -59,5 +59,5 @@ fi
 
 # 注入相关记忆（输出到 stdout，会被 Claude Code 读取）
 if [ -f "$CLI" ]; then
-    "$CLI" sessionstart -p "$PROJECT_PATH" -l 3 2>/dev/null || true
+    "$CLI" inject-context -p "$PROJECT_PATH" -l 3 2>/dev/null || true
 fi

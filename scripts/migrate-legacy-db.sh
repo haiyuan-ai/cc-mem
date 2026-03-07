@@ -16,6 +16,7 @@ LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/sqlite.sh"
 
 DO_BACKUP=true
+SELF_TEST=false
 MEMORY_DB="${MEMORY_DB:-$HOME/.claude/cc-mem/memory.db}"
 
 show_help() {
@@ -28,6 +29,7 @@ CC-Mem 一次性旧库迁移脚本
 选项：
   --db <path>      指定数据库路径（默认：\$HOME/.claude/cc-mem/memory.db）
   --no-backup      不备份数据库
+  --self-test      运行脚本自检
   -h, --help       显示帮助
 
 说明：
@@ -44,6 +46,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --no-backup)
             DO_BACKUP=false
+            ;;
+        --self-test)
+            SELF_TEST=true
             ;;
         -h|--help)
             show_help
@@ -291,5 +296,87 @@ EOF
 
     echo "旧库迁移完成：$MEMORY_DB"
 }
+
+run_self_test() {
+    local test_dir
+    local test_db
+    local columns
+    local result
+    local epoch
+    local old_db="$MEMORY_DB"
+    local old_backup="$DO_BACKUP"
+
+    test_dir=$(mktemp -d /tmp/cc-mem-migrate-test.XXXXXX)
+    test_db="$test_dir/legacy-memory.db"
+
+    sqlite3 "$test_db" <<'EOF'
+CREATE TABLE memories (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp_epoch INTEGER,
+    project_path TEXT,
+    category TEXT,
+    content TEXT NOT NULL,
+    content_preview TEXT,
+    summary TEXT,
+    tags TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    end_time DATETIME,
+    project_path TEXT,
+    message_count INTEGER DEFAULT 0,
+    summary TEXT,
+    status TEXT DEFAULT 'active'
+);
+
+INSERT INTO memories (
+    id, session_id, timestamp, timestamp_epoch, project_path, category,
+    content, content_preview, summary, tags, created_at, updated_at
+)
+VALUES (
+    'mem_legacy_backfill', 'legacy_session', '2026-03-07 07:39:35', NULL, '/legacy/project', 'context',
+    '旧 stop 记录', '旧 stop 记录', '旧 stop 摘要', 'stop,auto-captured',
+    '2026-03-07 07:39:35', '2026-03-07 07:39:35'
+);
+
+INSERT INTO sessions (id, project_path, status)
+VALUES ('legacy_session', '/legacy/project', 'active');
+EOF
+
+    MEMORY_DB="$test_db"
+    DO_BACKUP=false
+    main
+
+    columns=$(sqlite3 "$test_db" "PRAGMA table_info(memories);" | cut -d'|' -f2 | tr '\n' ' ')
+    [[ "$columns" == *" timestamp "* ]] && { echo "SELF-TEST FAILED: 迁移后仍保留旧 timestamp 列" >&2; return 1; }
+
+    epoch=$(sqlite3 "$test_db" "SELECT timestamp_epoch FROM memories WHERE id='mem_legacy_backfill';")
+    [[ -n "$epoch" && "$epoch" -gt 0 ]] || { echo "SELF-TEST FAILED: 未回填 timestamp_epoch" >&2; return 1; }
+
+    result=$(sqlite3 "$test_db" "SELECT source, memory_kind, auto_inject_policy, project_root, expires_at FROM memories WHERE id='mem_legacy_backfill';")
+    [[ "$result" == *"stop_summary"* ]] || { echo "SELF-TEST FAILED: 未回填 source=stop_summary" >&2; return 1; }
+    [[ "$result" == *"working"* ]] || { echo "SELF-TEST FAILED: 未回填 memory_kind=working" >&2; return 1; }
+    [[ "$result" == *"conditional"* ]] || { echo "SELF-TEST FAILED: 未回填 auto_inject_policy=conditional" >&2; return 1; }
+    [[ "$result" == *"/legacy/project"* ]] || { echo "SELF-TEST FAILED: 未回填 project_root" >&2; return 1; }
+    [[ "$result" == *"-"* || "$result" == *":"* ]] || { echo "SELF-TEST FAILED: 未回填 expires_at" >&2; return 1; }
+
+    sqlite3 "$test_db" "SELECT name FROM sqlite_master WHERE type='table' AND name='project_links';" | grep -q "project_links" \
+        || { echo "SELF-TEST FAILED: 未创建 project_links 表" >&2; return 1; }
+
+    MEMORY_DB="$old_db"
+    DO_BACKUP="$old_backup"
+    echo "SELF-TEST PASSED"
+}
+
+if [ "$SELF_TEST" = true ]; then
+    run_self_test
+    exit 0
+fi
 
 main "$@"

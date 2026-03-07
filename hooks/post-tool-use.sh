@@ -96,16 +96,9 @@ if [ -f "$LOG_FILE" ]; then
         CONTENT=$(cat "$LOG_FILE")
         hook_log "post-tool-use" "Threshold reached, saving memory"
 
-        # 确定类别
-        CATEGORY="context"
-        if echo "$CONTENT" | grep -qi "error\|fix\|debug\|fail"; then
-            CATEGORY="debug"
-        elif echo "$CONTENT" | grep -qi "solution\|resolve\|workaround"; then
-            CATEGORY="solution"
-        elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|create\|add"; then
-            CATEGORY="decision"
-        fi
-        hook_log "post-tool-use" "Derived CATEGORY=$CATEGORY from buffered tool log"
+        classification_result=""
+        classification_result=$(hook_classify_memory "post-tool-use" "post_tool_use" "" "$CONTENT" "auto-captured" "what-changed")
+        CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
 
         # 捕获记忆
         echo "$CONTENT" | "$CLI" capture \

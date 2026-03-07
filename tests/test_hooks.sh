@@ -292,6 +292,34 @@ test_user_prompt_submit_outputs_recall_context() {
     cleanup_hooks_test
 }
 
+it "user-prompt-submit 应使用规则分类器推导类别"
+test_user_prompt_submit_uses_rule_classification() {
+    setup_hooks_test
+    local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_prompt_classify")
+
+    cat > "$log_file" <<'EOF'
+[BASH] npm test: 调试 error root cause
+[FILE_CHANGE] src/app.js: 继续排查 bug
+EOF
+
+    local input
+    input=$(make_hook_input "$test_dir")
+    echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+
+    local saved_category
+    saved_category=$(db_query "SELECT category FROM memories WHERE source='user_prompt_submit' ORDER BY rowid DESC LIMIT 1;")
+    assert_equals "debug" "$saved_category" "user-prompt-submit 应把调试内容分类为 debug"
+
+    local classification_log
+    classification_log=$(grep "CLASSIFICATION_SOURCE=rule CATEGORY=debug" /tmp/ccmem_debug.log 2>/dev/null || true)
+    assert_contains "$classification_log" "CATEGORY=debug" "debug log 应记录规则分类结果"
+
+    rm -rf "$test_dir" "$log_file"
+    cleanup_hooks_test
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：Stop Hook 功能
 # ═══════════════════════════════════════════════════════════
@@ -475,6 +503,35 @@ EOF
     cleanup_hooks_test
 }
 
+it "session-end 应使用规则分类器推导类别"
+test_session_end_uses_rule_classification() {
+    setup_hooks_test
+    local test_dir
+    local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
+    test_dir=$(create_test_dir "ccmem_session_end_classify")
+
+    cat > "$log_file" <<'EOF'
+[FILE_CHANGE] src/search.js: 实现 fallback workaround
+[BASH] npm test: 验证 solution 已完成
+EOF
+
+    export PWD="$test_dir"
+    local input
+    input=$(make_hook_input)
+    echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+
+    local saved_category
+    saved_category=$(db_query "SELECT category FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
+    assert_equals "solution" "$saved_category" "session-end 应把修复结果分类为 solution"
+
+    local classification_log
+    classification_log=$(grep "CLASSIFICATION_SOURCE=rule CATEGORY=solution" /tmp/ccmem_debug.log 2>/dev/null || true)
+    assert_contains "$classification_log" "CATEGORY=solution" "debug log 应记录规则分类结果"
+
+    rm -rf "$test_dir" "$log_file"
+    cleanup_hooks_test
+}
+
 it "session-end 应该触发机会式清理"
 test_session_end_runs_opportunistic_cleanup() {
     setup_hooks_test
@@ -582,6 +639,7 @@ test_user_prompt_submit_clears_log
 # SessionStart / recall 注入测试
 test_session_start_outputs_context_block
 test_user_prompt_submit_outputs_recall_context
+test_user_prompt_submit_uses_rule_classification
 
 # Stop Hook 功能测试
 test_stop_extract_last_message
@@ -592,6 +650,7 @@ test_stop_condenses_long_final_response
 # 批量保存阈值测试
 test_batch_save_threshold
 test_session_end_condenses_long_log
+test_session_end_uses_rule_classification
 test_session_end_runs_opportunistic_cleanup
 test_opportunistic_cleanup_throttled
 

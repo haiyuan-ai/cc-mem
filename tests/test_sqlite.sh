@@ -124,6 +124,55 @@ test_project_links_manual_should_override_auto() {
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：自动分类
+# ═══════════════════════════════════════════════════════════
+
+describe "自动分类"
+
+it "决策类内容应该分类为 decision"
+test_classify_memory_decision() {
+    local result
+    result=$(classify_memory "manual" "决定采用 SQLite 作为存储方案" "这个方案的 trade-off 更合适" "decision" "trade-off")
+
+    assert_contains "$result" "decision|" "决策类内容应该分类为 decision"
+}
+
+it "修复结果应该分类为 solution"
+test_classify_memory_solution() {
+    local result
+    result=$(classify_memory "stop_summary" "已修复搜索结果为空的问题" "实现了 fallback workaround，问题已解决" "fix" "resolved")
+
+    assert_contains "$result" "solution|" "修复结果应该分类为 solution"
+}
+
+it "排查过程应该分类为 debug"
+test_classify_memory_debug() {
+    local result
+    result=$(classify_memory "post_tool_use" "" "[BASH] npm test: 排查 error root cause\n[FILE_CHANGE] src/app.js: 修复前先定位 bug" "debug" "issue")
+
+    assert_contains "$result" "debug|" "排查过程应该分类为 debug"
+}
+
+it "约定和规范应该分类为 pattern"
+test_classify_memory_pattern() {
+    local result
+    result=$(classify_memory "manual" "以后统一使用 project_root 做隔离规范" "这是新的 best practice 和 convention" "pattern" "best-practice")
+
+    assert_contains "$result" "pattern|" "约定和规范应该分类为 pattern"
+}
+
+it "自动分类应返回置信度和原因"
+test_classify_memory_confidence_and_reason() {
+    local confidence
+    local reason
+    confidence=$(classify_memory_confidence "manual" "决定采用 SQLite" "作为统一方案" "decision" "")
+    reason=$(classify_memory_reason "manual" "决定采用 SQLite" "作为统一方案" "decision" "")
+
+    assert_true "[ \"$confidence\" -ge 55 ]" "自动分类应返回合理置信度"
+    assert_not_empty "$reason" "自动分类应返回非空原因"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 测试：记忆清理
 # ═══════════════════════════════════════════════════════════
 
@@ -797,6 +846,13 @@ test_generate_id_contains_timestamp
 test_project_links_upsert_and_list
 test_project_links_delete
 test_project_links_manual_should_override_auto
+
+# 自动分类测试
+test_classify_memory_decision
+test_classify_memory_solution
+test_classify_memory_debug
+test_classify_memory_pattern
+test_classify_memory_confidence_and_reason
 
 # 记忆清理测试
 test_cleanup_low_priority_memories

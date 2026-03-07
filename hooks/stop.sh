@@ -171,16 +171,9 @@ EOF
 
     # 捕获操作日志中的记忆（如果有）
     if [ -n "$operation_log" ]; then
-        # 确定类别
-        CATEGORY="context"
-        if echo "$operation_log" | grep -qi "error\|fix\|debug\|fail"; then
-            CATEGORY="debug"
-        elif echo "$operation_log" | grep -qi "solution\|resolve\|workaround"; then
-            CATEGORY="solution"
-        elif echo "$operation_log" | grep -qi "decision\|choose\|select\|create\|add"; then
-            CATEGORY="decision"
-        fi
-        echo "[stop] $(date): Derived CATEGORY=$CATEGORY for stop_summary capture" >> "$DEBUG_LOG"
+        local classification_result=""
+        classification_result=$(hook_classify_memory "stop" "stop_summary" "$session_summary" "$operation_log" "stop,auto-captured" "what-changed")
+        CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
 
         # 捕获记忆
         echo "$operation_log" | "$CLI" capture \

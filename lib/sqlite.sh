@@ -86,6 +86,7 @@ resolve_git_common_dir() {
 }
 
 SQLITE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SQLITE_LIB_DIR/classification.sh"
 source "$SQLITE_LIB_DIR/memory_policy.sh"
 source "$SQLITE_LIB_DIR/injection.sh"
 

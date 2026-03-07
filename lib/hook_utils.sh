@@ -1,5 +1,8 @@
 #!/bin/bash
 
+HOOK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HOOK_UTILS_DIR/classification.sh"
+
 hook_log() {
     local hook_name="$1"
     shift
@@ -90,4 +93,25 @@ related_projects_preview() {
     fi
 
     list_related_projects "$project_root" 3 70 | cut -d'|' -f1 | paste -sd ',' -
+}
+
+hook_classify_memory() {
+    local hook_name="$1"
+    local source="$2"
+    local summary="$3"
+    local content="$4"
+    local tags="${5:-}"
+    local concepts="${6:-}"
+    local result=""
+    local category=""
+    local confidence=""
+    local reason=""
+
+    result=$(classify_memory "$source" "$summary" "$content" "$tags" "$concepts")
+    category=$(printf "%s\n" "$result" | cut -d'|' -f1)
+    confidence=$(printf "%s\n" "$result" | cut -d'|' -f2)
+    reason=$(printf "%s\n" "$result" | cut -d'|' -f3-)
+
+    hook_log "$hook_name" "CLASSIFICATION_SOURCE=rule CATEGORY=$category CONFIDENCE=$confidence REASON=$reason"
+    printf "%s|%s|%s\n" "$category" "$confidence" "$reason"
 }

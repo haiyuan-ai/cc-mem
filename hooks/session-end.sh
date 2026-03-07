@@ -51,16 +51,9 @@ if [ -f "$CLI" ]; then
                 hook_log "session-end" "Condensed long operation log before capture"
             fi
 
-            # 确定类别
-            CATEGORY="context"
-            if echo "$CONTENT" | grep -qi "error\|fix\|debug\|fail"; then
-                CATEGORY="debug"
-            elif echo "$CONTENT" | grep -qi "solution\|resolve\|workaround"; then
-                CATEGORY="solution"
-            elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|create\|add"; then
-                CATEGORY="decision"
-            fi
-            hook_log "session-end" "Derived CATEGORY=$CATEGORY for session-end capture"
+            classification_result=""
+            classification_result=$(hook_classify_memory "session-end" "session_end" "" "$CONTENT" "session-end,auto-captured" "what-changed")
+            CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
 
             # 捕获记忆
             echo "$CONTENT" | "$CLI" capture \

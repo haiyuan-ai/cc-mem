@@ -37,16 +37,9 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     CONTENT=$(cat "$LOG_FILE")
     hook_log "user-prompt-submit" "Log file exists with content, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}"
 
-    # 确定类别
-    CATEGORY="context"
-    if echo "$CONTENT" | grep -qi "error\|fix\|debug\|fail\|crash"; then
-        CATEGORY="debug"
-    elif echo "$CONTENT" | grep -qi "solution\|resolve\|workaround\|implemented\|created"; then
-        CATEGORY="solution"
-    elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|decided"; then
-        CATEGORY="decision"
-    fi
-    hook_log "user-prompt-submit" "Derived CATEGORY=$CATEGORY from buffered log"
+    classification_result=""
+    classification_result=$(hook_classify_memory "user-prompt-submit" "user_prompt_submit" "" "$CONTENT" "auto-captured" "what-changed")
+    CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
 
     # 标签提取
     TAGS="auto-captured"

@@ -534,14 +534,22 @@ done < notes.txt
 | id | TEXT | 主键 |
 | session_id | TEXT | 会话 ID |
 | timestamp | DATETIME | 时间戳 |
+| timestamp_epoch | INTEGER | Epoch 时间戳（用于排序与清理） |
 | project_path | TEXT | 项目路径 |
 | project_root | TEXT | 稳定项目根路径（git root 或当前路径） |
 | category | TEXT | 类别 |
 | source | TEXT | 来源（manual/post_tool_use/user_prompt_submit/stop_summary/...） |
+| classification_confidence | INTEGER | 分类置信度快照 |
+| classification_reason | TEXT | 分类原因快照 |
+| classification_source | TEXT | 分类来源（manual/rule） |
+| classification_version | TEXT | 分类规则版本快照 |
 | memory_kind | TEXT | 分层类型（durable/working/temporary） |
 | auto_inject_policy | TEXT | 自动注入策略（always/conditional/manual_only/never） |
 | expires_at | TEXT | 自动注入过期时间 |
+| content_hash | TEXT | 内容哈希（用于去重） |
+| concepts | TEXT | 自动识别的概念标签 |
 | content | TEXT | 内容 |
+| content_preview | TEXT | 内容预览 |
 | summary | TEXT | 摘要 |
 | tags | TEXT | 标签（逗号分隔） |
 
@@ -556,6 +564,7 @@ done < notes.txt
 | project_root | TEXT | 项目根路径 |
 | message_count | INTEGER | 消息数 |
 | summary | TEXT | 会话摘要 |
+| status | TEXT | 会话状态（active/completed/stopped） |
 
 ### project_links 表
 

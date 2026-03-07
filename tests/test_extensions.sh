@@ -28,7 +28,7 @@ test_opencode_extension_layout() {
     it "应该存在 capture 逻辑"
     assert_file_exists "$EXT_DIR/src/capture.ts" "应该存在 capture 逻辑"
     it "应该存在示例配置"
-    assert_file_exists "$EXT_DIR/examples/opencode.config.ts" "应该存在示例配置"
+    assert_file_exists "$EXT_DIR/examples/opencode.json" "应该存在示例配置"
 }
 
 test_opencode_extension_contract() {

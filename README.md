@@ -410,6 +410,8 @@ args = ["/ABSOLUTE/PATH/TO/cc-mem/mcp/server.py"]
 
 - `~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js`
 
+并把这个路径加入 `~/.config/opencode/opencode.json` 中的 `plugin` 数组。
+
 它基于 `cc-mem` MCP 实现：
 - 开场上下文注入
 - query-aware recall

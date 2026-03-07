@@ -1,0 +1,6 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js"
+  ]
+}

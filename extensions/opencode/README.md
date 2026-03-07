@@ -53,7 +53,7 @@ OpenCode.
 - `src/inject.ts`: session prewarm integration
 - `src/recall.ts`: query recall integration
 - `src/capture.ts`: tool-result capture integration
-- `examples/opencode.config.ts`: minimal example config
+- `examples/opencode.json`: minimal example config
 
 ## Minimal usage
 
@@ -73,18 +73,24 @@ npm install
 npm run build
 ```
 
-Then wire the built plugin into your local OpenCode setup:
+Then add the built plugin path to your OpenCode config file:
 
-```ts
-import ccMemPlugin from "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js"
+`~/.config/opencode/opencode.json`
 
-export default {
-  plugins: [ccMemPlugin]
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js"
+  ]
 }
 ```
 
-Use [examples/opencode.config.ts](/Users/ningoo/github/cc-mem/extensions/opencode/examples/opencode.config.ts)
+Use [examples/opencode.json](/Users/ningoo/github/cc-mem/extensions/opencode/examples/opencode.json)
 as a starting point.
+
+The `plugin` field is an array of plugin file paths. You do not need to import
+the plugin module inside the OpenCode config.
 
 ## Local development
 

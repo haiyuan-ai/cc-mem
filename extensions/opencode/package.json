@@ -5,8 +5,18 @@
   "type": "module",
   "exports": "./src/plugin.ts",
   "description": "OpenCode extension for cc-mem MCP-based capture and injection",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.json"
+  },
   "peerDependencies": {
     "@opencode-ai/plugin": "*",
     "@opencode-ai/sdk": "*"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.2.20",
+    "@opencode-ai/sdk": "^1.2.20",
+    "@types/node": "^22.13.9",
+    "typescript": "^5.8.2"
   }
 }

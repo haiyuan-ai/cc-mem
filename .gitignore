@@ -33,6 +33,8 @@ Thumbs.db
 *.bak
 __pycache__/
 *.pyc
+extensions/opencode/node_modules/
+extensions/opencode/dist/
 
 # 发布检查清单（发布后删除）
 GITHUB_RELEASE.md

@@ -26,6 +26,7 @@ It does not yet implement:
 - `python3`
 - the `cc-mem` repo available locally
 - a working `cc-mem` database at the default location or via `MEMORY_DB`
+- local extension dependencies installed via `bun install` or `npm install`
 
 The extension talks directly to:
 
@@ -47,6 +48,34 @@ OpenCode.
 
 Use the example config as a starting point and wire the plugin into your local
 OpenCode setup.
+
+## Local development
+
+Install dependencies inside `extensions/opencode/`:
+
+```bash
+cd extensions/opencode
+bun install
+```
+
+Or:
+
+```bash
+cd extensions/opencode
+npm install
+```
+
+Then run:
+
+```bash
+bun run typecheck
+```
+
+Or:
+
+```bash
+npm run typecheck
+```
 
 This extension is kept separate from the core Bash runtime on purpose. The core
 `cc-mem` project stays shell-first, while OpenCode integration can evolve

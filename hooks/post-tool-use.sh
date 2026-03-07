@@ -9,31 +9,32 @@ echo "[post-tool-use] $(date): START" >> "$DEBUG_LOG"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
+source "$PLUGIN_DIR/lib/hook_utils.sh"
 
 # 从 stdin 读取 hook 输入（JSON 格式）
 # Claude Code 的 command hook 可能不传递 stdin
 INPUT=$(cat)
-echo "[post-tool-use] $(date): INPUT length=${#INPUT}" >> "$DEBUG_LOG"
+hook_log "post-tool-use" "INPUT length=${#INPUT}"
 
 # 记录所有可用的环境变量（调试用）
-echo "[post-tool-use] $(date): CLAUDE_CODE_ENTRYPOINT=$CLAUDE_CODE_ENTRYPOINT" >> "$DEBUG_LOG"
-echo "[post-tool-use] $(date): PID=$$ PPID=$PPID" >> "$DEBUG_LOG"
+hook_log "post-tool-use" "CLAUDE_CODE_ENTRYPOINT=$CLAUDE_CODE_ENTRYPOINT"
+hook_log "post-tool-use" "PID=$$ PPID=$PPID"
 
 # 解析工具类型 - 从 stdin JSON 或环境变量获取
 TOOL_TYPE=""
 TOOL_NAME=""
 
 if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
-    TOOL_TYPE=$(echo "$INPUT" | jq -r '.tool_type // empty' 2>/dev/null || echo "")
-    TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || echo "")
-    echo "[post-tool-use] $(date): From stdin - TOOL_TYPE=$TOOL_TYPE, TOOL_NAME=$TOOL_NAME" >> "$DEBUG_LOG"
+    TOOL_TYPE=$(hook_json_get "$INPUT" '.tool_type // empty')
+    TOOL_NAME=$(hook_json_get "$INPUT" '.tool_name // empty')
+    hook_log "post-tool-use" "From stdin - TOOL_TYPE=$TOOL_TYPE, TOOL_NAME=$TOOL_NAME"
 fi
 
 # 如果没有工具类型，尝试从 tool_input 推断
 if [ -z "$TOOL_TYPE" ]; then
-    TOOL_TYPE=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || echo "")
+    TOOL_TYPE=$(hook_json_get "$INPUT" '.tool_name // empty')
 fi
-echo "[post-tool-use] $(date): Final TOOL_TYPE=$TOOL_TYPE" >> "$DEBUG_LOG"
+hook_log "post-tool-use" "Final TOOL_TYPE=$TOOL_TYPE"
 
 # 只捕获关键工具
 case "$TOOL_TYPE" in
@@ -41,55 +42,44 @@ case "$TOOL_TYPE" in
         # 继续处理
         ;;
     *)
-        echo "[post-tool-use] $(date): Skipping non-tracked tool: $TOOL_TYPE" >> "$DEBUG_LOG"
+        hook_log "post-tool-use" "Skipping non-tracked tool: $TOOL_TYPE"
         exit 0
         ;;
 esac
 
 # 获取会话信息 - 从 stdin JSON 解析 session_id
-SESSION_ID=""
-if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
-    SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-    echo "[post-tool-use] $(date): session_id from stdin = $SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 回退到环境变量或 PID
-if [ -z "$SESSION_ID" ]; then
-    SESSION_ID="${CLAUDE_SESSION_ID:-$$}"
-    echo "[post-tool-use] $(date): using fallback SESSION_ID=$SESSION_ID" >> "$DEBUG_LOG"
-fi
+SESSION_ID=$(resolve_hook_session_id "post-tool-use" "$INPUT")
 
 # 获取项目路径
-PROJECT_PATH="${PWD}"
-echo "[post-tool-use] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
+PROJECT_PATH=$(resolve_hook_project_path "post-tool-use" "$INPUT")
 
 # 提取关键信息
 # 如果 INPUT 为空，尝试从其他来源获取工具信息
 if [ -z "$INPUT" ] || [ "$INPUT" = "" ]; then
-    echo "[post-tool-use] $(date): WARNING - stdin is empty, cannot get tool details" >> "$DEBUG_LOG"
+    hook_log "post-tool-use" "WARNING - stdin is empty, cannot get tool details"
     # 记录一个通用的工具调用记录
     echo "[TOOL_CALL] unknown tool" >> "/tmp/ccmem_${SESSION_ID}.log"
-    echo "[post-tool-use] $(date): Logged generic tool call" >> "$DEBUG_LOG"
+    hook_log "post-tool-use" "Logged generic tool call"
 else
     case "$TOOL_TYPE" in
         "Edit"|"Write")
-            FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || echo "")
-            DESCRIPTION=$(echo "$INPUT" | jq -r '.tool_input.description // empty' 2>/dev/null || echo "")
+            FILE_PATH=$(hook_json_get "$INPUT" '.tool_input.file_path // empty')
+            DESCRIPTION=$(hook_json_get "$INPUT" '.tool_input.description // empty')
 
             if [ -n "$FILE_PATH" ]; then
                 # 累积文件更改记录
                 echo "[FILE_CHANGE] $FILE_PATH: $DESCRIPTION" >> "/tmp/ccmem_${SESSION_ID}.log"
-                echo "[post-tool-use] $(date): Logged FILE_CHANGE: $FILE_PATH" >> "$DEBUG_LOG"
+                hook_log "post-tool-use" "Logged FILE_CHANGE: $FILE_PATH"
             fi
             ;;
         "Bash"|"Bash (sudo)")
-            COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || echo "")
-            DESCRIPTION=$(echo "$INPUT" | jq -r '.tool_input.description // empty' 2>/dev/null || echo "")
+            COMMAND=$(hook_json_get "$INPUT" '.tool_input.command // empty')
+            DESCRIPTION=$(hook_json_get "$INPUT" '.tool_input.description // empty')
 
             if [ -n "$COMMAND" ]; then
                 # 累积命令执行记录
                 echo "[BASH] $COMMAND: $DESCRIPTION" >> "/tmp/ccmem_${SESSION_ID}.log"
-                echo "[post-tool-use] $(date): Logged BASH: $COMMAND" >> "$DEBUG_LOG"
+                hook_log "post-tool-use" "Logged BASH: $COMMAND"
             fi
             ;;
     esac
@@ -99,12 +89,12 @@ fi
 LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
 if [ -f "$LOG_FILE" ]; then
     LINE_COUNT=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
-    echo "[post-tool-use] $(date): LOG_FILE=$LOG_FILE line_count=$LINE_COUNT" >> "$DEBUG_LOG"
+    hook_log "post-tool-use" "LOG_FILE=$LOG_FILE line_count=$LINE_COUNT"
 
     # 达到阈值时批量保存
     if [ "$LINE_COUNT" -ge 3 ]; then
         CONTENT=$(cat "$LOG_FILE")
-        echo "[post-tool-use] $(date): Threshold reached, saving memory" >> "$DEBUG_LOG"
+        hook_log "post-tool-use" "Threshold reached, saving memory"
 
         # 确定类别
         CATEGORY="context"
@@ -115,7 +105,7 @@ if [ -f "$LOG_FILE" ]; then
         elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|create\|add"; then
             CATEGORY="decision"
         fi
-        echo "[post-tool-use] $(date): Derived CATEGORY=$CATEGORY from buffered tool log" >> "$DEBUG_LOG"
+        hook_log "post-tool-use" "Derived CATEGORY=$CATEGORY from buffered tool log"
 
         # 捕获记忆
         echo "$CONTENT" | "$CLI" capture \
@@ -128,9 +118,9 @@ if [ -f "$LOG_FILE" ]; then
 
         # 清空日志
         > "$LOG_FILE"
-        echo "[post-tool-use] $(date): Buffered log cleared after capture" >> "$DEBUG_LOG"
+        hook_log "post-tool-use" "Buffered log cleared after capture"
     fi
 fi
 
-echo "[post-tool-use] $(date): END" >> "$DEBUG_LOG"
+hook_log "post-tool-use" "END"
 exit 0

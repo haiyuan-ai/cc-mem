@@ -12,65 +12,43 @@ CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 DEBUG_LOG="/tmp/ccmem_debug.log"
 echo "[session-end] $(date): START" >> "$DEBUG_LOG"
 
+source "$PLUGIN_DIR/lib/hook_utils.sh"
+
 # 从 stdin 读取 hook 输入（JSON 格式）
 # Claude Code 的 command hook 会传递 stdin JSON
 INPUT=$(cat)
-echo "[session-end] $(date): INPUT length=${#INPUT}" >> "$DEBUG_LOG"
-
-# 从 stdin JSON 中解析 session_id
-SESSION_ID=""
-if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
-    SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-    echo "[session-end] $(date): session_id from stdin = $SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 回退到环境变量或 PID
-if [ -z "$SESSION_ID" ]; then
-    SESSION_ID="${CLAUDE_SESSION_ID:-$$}"
-    echo "[session-end] $(date): using fallback SESSION_ID=$SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 获取项目路径
-PROJECT_PATH="${PWD}"
-echo "[session-end] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
+hook_log "session-end" "INPUT length=${#INPUT}"
+SESSION_ID=$(resolve_hook_session_id "session-end" "$INPUT")
+PROJECT_PATH=$(resolve_hook_project_path "session-end" "$INPUT")
 
 # 从环境变量获取会话摘要（如果可用）
 SESSION_SUMMARY="${CLAUDE_SESSION_SUMMARY:-}"
 MESSAGE_COUNT="${CLAUDE_MESSAGE_COUNT:-0}"
 
-# 加载 SQLite 函数库
-if [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
-    source "$PLUGIN_DIR/lib/sqlite.sh"
-    echo "[session-end] $(date): Loaded sqlite.sh" >> "$DEBUG_LOG"
-else
-    echo "[session-end] $(date): ERROR - sqlite.sh not found at $PLUGIN_DIR/lib/sqlite.sh" >> "$DEBUG_LOG"
+if ! load_sqlite_runtime "session-end" "$PLUGIN_DIR"; then
     exit 1
 fi
 
-PROJECT_ROOT="$PROJECT_PATH"
-if command -v resolve_project_root &> /dev/null; then
-    PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
-fi
-echo "[session-end] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+PROJECT_ROOT=$(resolve_hook_project_root "session-end" "$PROJECT_PATH")
 
 # 结束会话记录
 end_session "$SESSION_ID" "$MESSAGE_COUNT" "$SESSION_SUMMARY"
-echo "[session-end] $(date): Updated session record" >> "$DEBUG_LOG"
+hook_log "session-end" "Updated session record"
 
 # 自动捕获会话记忆
 if [ -f "$CLI" ]; then
     # 检查工具使用日志文件（由 post-tool-use.sh 创建）
     LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
-    echo "[session-end] $(date): Checking LOG_FILE=$LOG_FILE" >> "$DEBUG_LOG"
+    hook_log "session-end" "Checking LOG_FILE=$LOG_FILE"
 
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         CONTENT=$(cat "$LOG_FILE")
-        echo "[session-end] $(date): LOG_FILE content exists, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}" >> "$DEBUG_LOG"
+        hook_log "session-end" "LOG_FILE content exists, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}"
 
         if [ -n "$CONTENT" ]; then
             if should_condense_operation_log "$CONTENT"; then
                 CONTENT=$(summarize_operation_log "$CONTENT")
-                echo "[session-end] $(date): Condensed long operation log before capture" >> "$DEBUG_LOG"
+                hook_log "session-end" "Condensed long operation log before capture"
             fi
 
             # 确定类别
@@ -82,7 +60,7 @@ if [ -f "$CLI" ]; then
             elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|create\|add"; then
                 CATEGORY="decision"
             fi
-            echo "[session-end] $(date): Derived CATEGORY=$CATEGORY for session-end capture" >> "$DEBUG_LOG"
+            hook_log "session-end" "Derived CATEGORY=$CATEGORY for session-end capture"
 
             # 捕获记忆
             echo "$CONTENT" | "$CLI" capture \
@@ -96,20 +74,20 @@ if [ -f "$CLI" ]; then
 
             # 清空日志
             > "$LOG_FILE"
-            echo "[session-end] $(date): Buffered log cleared after session-end capture" >> "$DEBUG_LOG"
+            hook_log "session-end" "Buffered log cleared after session-end capture"
 
             echo "[CC-Mem] 已保存会话记忆：$SESSION_ID"
-            echo "[session-end] $(date): Memory saved" >> "$DEBUG_LOG"
+            hook_log "session-end" "Memory saved"
         fi
     else
         echo "[CC-Mem] 会话结束，无待保存记忆：$SESSION_ID"
-        echo "[session-end] $(date): No log file or empty" >> "$DEBUG_LOG"
+        hook_log "session-end" "No log file or empty"
     fi
 else
-    echo "[session-end] $(date): CLI not found at $CLI" >> "$DEBUG_LOG"
+    hook_log "session-end" "CLI not found at $CLI"
 fi
 
 run_opportunistic_cleanup "session-end" 30 50 43200 || true
 
 echo "[CC-Mem] 会话已结束：$SESSION_ID"
-echo "[session-end] $(date): END" >> "$DEBUG_LOG"
+hook_log "session-end" "END"

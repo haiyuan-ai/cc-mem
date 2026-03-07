@@ -13,46 +13,24 @@ CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 DEBUG_LOG="/tmp/ccmem_debug.log"
 echo "[stop] $(date): START" >> "$DEBUG_LOG"
 
+source "$PLUGIN_DIR/lib/hook_utils.sh"
+
 # 从 stdin 读取 hook 输入（JSON 格式）
 INPUT=$(cat)
-echo "[stop] $(date): INPUT length=${#INPUT}" >> "$DEBUG_LOG"
+hook_log "stop" "INPUT length=${#INPUT}"
 
 # 从 stdin JSON 中解析字段
-SESSION_ID=""
-TRANSCRIPT_PATH=""
-PROJECT_PATH="${PWD}"
-
-if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
-    SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-    TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
-    # 如果 cwd 在输入中，使用它
-    local_cwd=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
-    if [ -n "$local_cwd" ]; then
-        PROJECT_PATH="$local_cwd"
-    fi
-    echo "[stop] $(date): session_id=$SESSION_ID, transcript_path=$TRANSCRIPT_PATH" >> "$DEBUG_LOG"
-fi
-
-# 回退到环境变量或 PID
-if [ -z "$SESSION_ID" ]; then
-    SESSION_ID="${CLAUDE_SESSION_ID:-$$}"
-    echo "[stop] $(date): using fallback SESSION_ID=$SESSION_ID" >> "$DEBUG_LOG"
-fi
+SESSION_ID=$(resolve_hook_session_id "stop" "$INPUT")
+TRANSCRIPT_PATH=$(hook_json_get "$INPUT" '.transcript_path // empty')
+PROJECT_PATH=$(resolve_hook_project_path "stop" "$INPUT")
+hook_log "stop" "session_id=$SESSION_ID, transcript_path=$TRANSCRIPT_PATH"
 
 # 加载库文件
-if [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
-    source "$PLUGIN_DIR/lib/sqlite.sh"
-    echo "[stop] $(date): Loaded sqlite.sh" >> "$DEBUG_LOG"
-else
-    echo "[stop] $(date): ERROR - sqlite.sh not found" >> "$DEBUG_LOG"
+if ! load_sqlite_runtime "stop" "$PLUGIN_DIR"; then
     exit 1
 fi
 
-PROJECT_ROOT="$PROJECT_PATH"
-if command -v resolve_project_root &> /dev/null; then
-    PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
-fi
-echo "[stop] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+PROJECT_ROOT=$(resolve_hook_project_root "stop" "$PROJECT_PATH")
 
 # 从 transcript 文件提取最后一条助手消息
 extract_last_assistant_message() {

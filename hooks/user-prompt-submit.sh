@@ -9,30 +9,13 @@ echo "[user-prompt-submit] $(date): START" >> "$DEBUG_LOG"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
+source "$PLUGIN_DIR/lib/hook_utils.sh"
 
 # 从 stdin 读取 hook 输入（JSON 格式）- 可能为空
 INPUT=$(cat)
-echo "[user-prompt-submit] $(date): INPUT length=${#INPUT}" >> "$DEBUG_LOG"
-
-# 从 stdin JSON 中解析 session_id
-SESSION_ID=""
-if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
-    SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-    echo "[user-prompt-submit] $(date): session_id from stdin = $SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 回退到环境变量或 PID
-if [ -z "$SESSION_ID" ]; then
-    SESSION_ID="${CLAUDE_SESSION_ID:-$$}"
-    echo "[user-prompt-submit] $(date): using fallback SESSION_ID=$SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 获取项目路径
-PROJECT_PATH=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
-if [ -z "$PROJECT_PATH" ]; then
-    PROJECT_PATH="${PWD}"
-fi
-echo "[user-prompt-submit] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
+hook_log "user-prompt-submit" "INPUT length=${#INPUT}"
+SESSION_ID=$(resolve_hook_session_id "user-prompt-submit" "$INPUT")
+PROJECT_PATH=$(resolve_hook_project_path "user-prompt-submit" "$INPUT")
 
 USER_PROMPT=""
 if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
@@ -44,15 +27,15 @@ if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
          else empty end) // empty
     ' 2>/dev/null)
 fi
-echo "[user-prompt-submit] $(date): USER_PROMPT length=${#USER_PROMPT}" >> "$DEBUG_LOG"
+hook_log "user-prompt-submit" "USER_PROMPT length=${#USER_PROMPT}"
 
 # 检查是否有累积的日志
 LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
-echo "[user-prompt-submit] $(date): Checking LOG_FILE=$LOG_FILE" >> "$DEBUG_LOG"
+hook_log "user-prompt-submit" "Checking LOG_FILE=$LOG_FILE"
 
 if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     CONTENT=$(cat "$LOG_FILE")
-    echo "[user-prompt-submit] $(date): Log file exists with content, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}" >> "$DEBUG_LOG"
+    hook_log "user-prompt-submit" "Log file exists with content, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}"
 
     # 确定类别
     CATEGORY="context"
@@ -63,7 +46,7 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|decided"; then
         CATEGORY="decision"
     fi
-    echo "[user-prompt-submit] $(date): Derived CATEGORY=$CATEGORY from buffered log" >> "$DEBUG_LOG"
+    hook_log "user-prompt-submit" "Derived CATEGORY=$CATEGORY from buffered log"
 
     # 标签提取
     TAGS="auto-captured"
@@ -79,30 +62,24 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
 
     # 清空日志
     > "$LOG_FILE"
-    echo "[user-prompt-submit] $(date): Memory saved" >> "$DEBUG_LOG"
+    hook_log "user-prompt-submit" "Memory saved"
 else
-    echo "[user-prompt-submit] $(date): No log file or empty" >> "$DEBUG_LOG"
+    hook_log "user-prompt-submit" "No log file or empty"
 fi
 
 if [ -n "$USER_PROMPT" ] && [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
-    source "$PLUGIN_DIR/lib/sqlite.sh" 2>/dev/null || true
-    PROJECT_ROOT="$PROJECT_PATH"
-    if command -v resolve_project_root &> /dev/null; then
-        PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
-    fi
-    echo "[user-prompt-submit] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
-    if command -v list_related_projects &> /dev/null; then
-        related_preview=$(list_related_projects "$PROJECT_ROOT" 3 70 | cut -d'|' -f1 | paste -sd ',' -)
-        echo "[user-prompt-submit] $(date): RELATED_PROJECTS=${related_preview:-none}" >> "$DEBUG_LOG"
-    fi
+    load_sqlite_runtime "user-prompt-submit" "$PLUGIN_DIR" >/dev/null 2>&1 || true
+    PROJECT_ROOT=$(resolve_hook_project_root "user-prompt-submit" "$PROJECT_PATH")
+    related_preview=$(related_projects_preview "$PROJECT_ROOT")
+    hook_log "user-prompt-submit" "RELATED_PROJECTS=${related_preview:-none}"
     recall_context=$(generate_query_recall_context "$PROJECT_PATH" "$USER_PROMPT" 3 2>/dev/null || true)
     if [ -n "$recall_context" ]; then
         recall_items=""
         recall_items=$(printf "%s\n" "$recall_context" | grep -c '^- \[' 2>/dev/null || echo "0")
-        echo "[user-prompt-submit] $(date): Recall generated, items=$recall_items, length=${#recall_context}" >> "$DEBUG_LOG"
+        hook_log "user-prompt-submit" "Recall generated, items=$recall_items, length=${#recall_context}"
         echo "$recall_context"
     else
-        echo "[user-prompt-submit] $(date): Recall skipped or empty for current prompt" >> "$DEBUG_LOG"
+        hook_log "user-prompt-submit" "Recall skipped or empty for current prompt"
     fi
 fi
 

@@ -9,54 +9,24 @@ echo "[session-start] $(date): START" >> "$DEBUG_LOG"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
+source "$PLUGIN_DIR/lib/hook_utils.sh"
 
 # 从 stdin 读取 hook 输入（JSON 格式）
 INPUT=$(cat)
-echo "[session-start] $(date): INPUT length=${#INPUT}" >> "$DEBUG_LOG"
-echo "[session-start] $(date): PID=$$ PPID=$PPID" >> "$DEBUG_LOG"
+hook_log "session-start" "INPUT length=${#INPUT}"
+hook_log "session-start" "PID=$$ PPID=$PPID"
 
-# 从 stdin JSON 中解析 session_id
-SESSION_ID=""
-if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
-    SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-    echo "[session-start] $(date): session_id from stdin = $SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 回退到环境变量或 PID
-if [ -z "$SESSION_ID" ]; then
-    SESSION_ID="${CLAUDE_SESSION_ID:-$$}"
-    echo "[session-start] $(date): using fallback SESSION_ID=$SESSION_ID" >> "$DEBUG_LOG"
-fi
-
-# 获取项目路径
-PROJECT_PATH="${PWD}"
-echo "[session-start] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
-
-# 获取项目路径
-PROJECT_PATH=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
-if [ -z "$PROJECT_PATH" ]; then
-    PROJECT_PATH="${PWD}"
-fi
-echo "[session-start] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
+SESSION_ID=$(resolve_hook_session_id "session-start" "$INPUT")
+PROJECT_PATH=$(resolve_hook_project_path "session-start" "$INPUT")
 
 # 静默初始化（如果数据库不存在）
-if [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
-    source "$PLUGIN_DIR/lib/sqlite.sh" 2>/dev/null || true
-    echo "[session-start] $(date): Loaded sqlite.sh" >> "$DEBUG_LOG"
-else
-    echo "[session-start] $(date): WARNING - sqlite.sh not found" >> "$DEBUG_LOG"
-fi
-
-PROJECT_ROOT="$PROJECT_PATH"
-if command -v resolve_project_root &> /dev/null; then
-    PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
-fi
-echo "[session-start] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+load_sqlite_runtime "session-start" "$PLUGIN_DIR" >/dev/null 2>&1 || true
+PROJECT_ROOT=$(resolve_hook_project_root "session-start" "$PROJECT_PATH")
 
 # 记录会话开始
 if command -v upsert_session &> /dev/null; then
     upsert_session "$SESSION_ID" "$PROJECT_PATH" "$PROJECT_ROOT"
-    echo "[session-start] $(date): Session upserted with project_root=$PROJECT_ROOT" >> "$DEBUG_LOG"
+    hook_log "session-start" "Session upserted with project_root=$PROJECT_ROOT"
 fi
 
 # 更新项目访问
@@ -66,10 +36,8 @@ fi
 
 # 注入相关记忆（输出到 stdout，会被 Claude Code 读取）
 if [ -f "$CLI" ]; then
-    if command -v list_related_projects &> /dev/null; then
-        related_preview=$(list_related_projects "$PROJECT_ROOT" 3 70 | cut -d'|' -f1 | paste -sd ',' -)
-        echo "[session-start] $(date): RELATED_PROJECTS=${related_preview:-none}" >> "$DEBUG_LOG"
-    fi
+    related_preview=$(related_projects_preview "$PROJECT_ROOT")
+    hook_log "session-start" "RELATED_PROJECTS=${related_preview:-none}"
     "$CLI" inject-context -p "$PROJECT_PATH" -l 3 2>/dev/null || true
-    echo "[session-start] $(date): inject-context invoked for project_root=$PROJECT_ROOT" >> "$DEBUG_LOG"
+    hook_log "session-start" "inject-context invoked for project_root=$PROJECT_ROOT"
 fi

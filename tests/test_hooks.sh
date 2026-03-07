@@ -316,8 +316,12 @@ EOF
     policy_row=$(db_query "SELECT memory_kind || '|' || auto_inject_policy FROM memories WHERE source='user_prompt_submit' ORDER BY rowid DESC LIMIT 1;")
     assert_equals "working|conditional" "$policy_row" "user-prompt-submit debug 记忆应写入 working|conditional"
 
+    local classification_snapshot
+    classification_snapshot=$(db_query "SELECT classification_confidence || '|' || classification_source || '|' || classification_version FROM memories WHERE source='user_prompt_submit' ORDER BY rowid DESC LIMIT 1;")
+    assert_contains "$classification_snapshot" "|rule|rule-v1" "user-prompt-submit 应保存规则分类快照"
+
     local classification_log
-    classification_log=$(grep "CLASSIFICATION_SOURCE=rule CATEGORY=debug" /tmp/ccmem_debug.log 2>/dev/null || true)
+    classification_log=$(grep "CLASSIFICATION_SOURCE=rule" /tmp/ccmem_debug.log 2>/dev/null | grep "CATEGORY=debug" || true)
     assert_contains "$classification_log" "CATEGORY=debug" "debug log 应记录规则分类结果"
     assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' /tmp/ccmem_debug.log 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
 
@@ -533,8 +537,12 @@ EOF
     policy_row=$(db_query "SELECT memory_kind || '|' || auto_inject_policy FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
     assert_equals "working|conditional" "$policy_row" "session-end solution 记忆应写入 working|conditional"
 
+    local classification_snapshot
+    classification_snapshot=$(db_query "SELECT classification_confidence || '|' || classification_source || '|' || classification_version FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
+    assert_contains "$classification_snapshot" "|rule|rule-v1" "session-end 应保存规则分类快照"
+
     local classification_log
-    classification_log=$(grep "CLASSIFICATION_SOURCE=rule CATEGORY=solution" /tmp/ccmem_debug.log 2>/dev/null || true)
+    classification_log=$(grep "CLASSIFICATION_SOURCE=rule" /tmp/ccmem_debug.log 2>/dev/null | grep "CATEGORY=solution" || true)
     assert_contains "$classification_log" "CATEGORY=solution" "debug log 应记录规则分类结果"
     assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' /tmp/ccmem_debug.log 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
 

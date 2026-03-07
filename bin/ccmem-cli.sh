@@ -139,6 +139,10 @@ cmd_capture() {
     local auto_inject_policy=""
     local project_root=""
     local expires_at=""
+    local classification_confidence=""
+    local classification_reason=""
+    local classification_source=""
+    local classification_version=""
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -152,6 +156,10 @@ cmd_capture() {
             --inject-policy) auto_inject_policy="$2"; shift ;;
             --project-root) project_root="$2"; shift ;;
             --expires-at) expires_at="$2"; shift ;;
+            --classification-confidence) classification_confidence="$2"; shift ;;
+            --classification-reason) classification_reason="$2"; shift ;;
+            --classification-source) classification_source="$2"; shift ;;
+            --classification-version) classification_version="$2"; shift ;;
             -h|--help) show_help; return ;;
             *) print_unknown_option "$1"; return 1 ;;
         esac
@@ -206,7 +214,7 @@ cmd_capture() {
                 fi
             fi
 
-            local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at")
+            local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at" "$classification_confidence" "$classification_reason" "$classification_source" "$classification_version")
 
             if ! handle_store_memory_result "$id" "  " "$private_warning" "记忆 ID: $id"; then
                 return 1
@@ -230,6 +238,10 @@ cmd_store() {
     local auto_inject_policy=""
     local project_root=""
     local expires_at=""
+    local classification_confidence=""
+    local classification_reason=""
+    local classification_source=""
+    local classification_version=""
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -243,6 +255,10 @@ cmd_store() {
             --inject-policy) auto_inject_policy="$2"; shift ;;
             --project-root) project_root="$2"; shift ;;
             --expires-at) expires_at="$2"; shift ;;
+            --classification-confidence) classification_confidence="$2"; shift ;;
+            --classification-reason) classification_reason="$2"; shift ;;
+            --classification-source) classification_source="$2"; shift ;;
+            --classification-version) classification_version="$2"; shift ;;
             -h|--help) show_help; return ;;
             *) print_unknown_option "$1"; return 1 ;;
         esac
@@ -264,7 +280,7 @@ cmd_store() {
         summary=$(build_default_summary "$content")
     fi
 
-    local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags" "" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at")
+    local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags" "" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at" "$classification_confidence" "$classification_reason" "$classification_source" "$classification_version")
     handle_store_memory_result "$id" "" "" "记忆已存储：$id"
 }
 

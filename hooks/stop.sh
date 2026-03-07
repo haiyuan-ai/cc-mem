@@ -175,6 +175,7 @@ EOF
         classification_result=$(hook_classify_memory "stop" "stop_summary" "$session_summary" "$operation_log" "stop,auto-captured" "what-changed")
         CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
         CLASSIFICATION_CONFIDENCE=$(printf "%s\n" "$classification_result" | cut -d'|' -f2)
+        CLASSIFICATION_REASON=$(printf "%s\n" "$classification_result" | cut -d'|' -f3-)
         policy_result=$(hook_classification_policy "stop" "stop_summary" "$CATEGORY" "$CLASSIFICATION_CONFIDENCE")
         MEMORY_KIND=$(printf "%s\n" "$policy_result" | cut -d'|' -f1)
         AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
@@ -188,6 +189,10 @@ EOF
             --source "stop_summary" \
             --memory-kind "$MEMORY_KIND" \
             --inject-policy "$AUTO_INJECT_POLICY" \
+            --classification-confidence "$CLASSIFICATION_CONFIDENCE" \
+            --classification-reason "$CLASSIFICATION_REASON" \
+            --classification-source "rule" \
+            --classification-version "$CLASSIFICATION_RULE_VERSION" \
             --concepts "what-changed" \
             2>/dev/null || true
 

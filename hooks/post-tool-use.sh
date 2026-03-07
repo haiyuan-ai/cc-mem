@@ -100,6 +100,7 @@ if [ -f "$LOG_FILE" ]; then
         classification_result=$(hook_classify_memory "post-tool-use" "post_tool_use" "" "$CONTENT" "auto-captured" "what-changed")
         CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
         CLASSIFICATION_CONFIDENCE=$(printf "%s\n" "$classification_result" | cut -d'|' -f2)
+        CLASSIFICATION_REASON=$(printf "%s\n" "$classification_result" | cut -d'|' -f3-)
         policy_result=$(hook_classification_policy "post-tool-use" "post_tool_use" "$CATEGORY" "$CLASSIFICATION_CONFIDENCE")
         MEMORY_KIND=$(printf "%s\n" "$policy_result" | cut -d'|' -f1)
         AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
@@ -112,6 +113,10 @@ if [ -f "$LOG_FILE" ]; then
             --source "post_tool_use" \
             --memory-kind "$MEMORY_KIND" \
             --inject-policy "$AUTO_INJECT_POLICY" \
+            --classification-confidence "$CLASSIFICATION_CONFIDENCE" \
+            --classification-reason "$CLASSIFICATION_REASON" \
+            --classification-source "rule" \
+            --classification-version "$CLASSIFICATION_RULE_VERSION" \
             --concepts "what-changed" \
             2>/dev/null || true
 

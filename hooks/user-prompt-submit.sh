@@ -41,6 +41,7 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     classification_result=$(hook_classify_memory "user-prompt-submit" "user_prompt_submit" "" "$CONTENT" "auto-captured" "what-changed")
     CATEGORY=$(printf "%s\n" "$classification_result" | cut -d'|' -f1)
     CLASSIFICATION_CONFIDENCE=$(printf "%s\n" "$classification_result" | cut -d'|' -f2)
+    CLASSIFICATION_REASON=$(printf "%s\n" "$classification_result" | cut -d'|' -f3-)
     policy_result=$(hook_classification_policy "user-prompt-submit" "user_prompt_submit" "$CATEGORY" "$CLASSIFICATION_CONFIDENCE")
     MEMORY_KIND=$(printf "%s\n" "$policy_result" | cut -d'|' -f1)
     AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
@@ -57,6 +58,10 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         --source "user_prompt_submit" \
         --memory-kind "$MEMORY_KIND" \
         --inject-policy "$AUTO_INJECT_POLICY" \
+        --classification-confidence "$CLASSIFICATION_CONFIDENCE" \
+        --classification-reason "$CLASSIFICATION_REASON" \
+        --classification-source "rule" \
+        --classification-version "$CLASSIFICATION_RULE_VERSION" \
         >/dev/null 2>&1 || true
 
     # 清空日志

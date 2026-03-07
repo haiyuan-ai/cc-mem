@@ -316,6 +316,18 @@ test_store_memory_metadata_fields() {
     assert_contains "$result" "/test/project" "非 git 项目 root 应该等于 project_path"
 }
 
+it "应该写入分类快照字段"
+test_store_memory_classification_snapshot_fields() {
+    local id=$(store_memory "session1" "/test/project" "solution" "分类快照内容" "分类快照摘要" "tag1" "" "user_prompt_submit" "working" "conditional" "/test/project" "" "78" "rule matched solution keywords" "rule" "rule-v1")
+
+    local result
+    result=$(sqlite3 "$TEST_DB" "SELECT classification_confidence, classification_reason, classification_source, classification_version FROM memories WHERE id='$id';")
+    assert_contains "$result" "78" "应该记录 classification_confidence"
+    assert_contains "$result" "rule matched solution keywords" "应该记录 classification_reason"
+    assert_contains "$result" "rule" "应该记录 classification_source"
+    assert_contains "$result" "rule-v1" "应该记录 classification_version"
+}
+
 it "应该回填旧记录的分层元数据"
 test_backfill_legacy_metadata_fields() {
     sqlite3 "$TEST_DB" <<'EOF'
@@ -710,6 +722,29 @@ test_rank_memory_for_sessionstart() {
     assert_true "[ $score_debug -gt $score_context ]" "debug 应该比 context 分数高"
 }
 
+it "salience 分数应该优先高价值高置信度主项目记忆"
+test_score_memory_salience() {
+    local high_score
+    local low_score
+    high_score=$(score_memory_salience "decision" 90 "manual" "durable" "always" "$(date +%s)" "/test/salience" "/test/salience")
+    low_score=$(score_memory_salience "context" 40 "session_end" "temporary" "never" "$(date +%s)" "/test/other" "/test/salience")
+
+    assert_true "[ $high_score -gt $low_score ]" "高价值高置信度主项目记忆应有更高 salience"
+}
+
+it "salience 分数应该优先当前项目而不是 related project"
+test_score_memory_salience_prefers_current_project() {
+    local current_score
+    local related_score
+    local now_ts
+    now_ts=$(date +%s)
+
+    current_score=$(score_memory_salience "solution" 70 "user_prompt_submit" "working" "conditional" "$now_ts" "/test/current" "/test/current")
+    related_score=$(score_memory_salience "solution" 70 "user_prompt_submit" "working" "conditional" "$now_ts" "/test/related" "/test/current")
+
+    assert_true "[ $current_score -gt $related_score ]" "当前项目记忆应高于 related project 记忆"
+}
+
 it "应该能选择高价值记忆"
 test_select_sessionstart_memories() {
     # 存储不同类别的记忆
@@ -811,6 +846,21 @@ test_generate_query_recall_context_related_project() {
     assert_contains "$result" "(related: $parent_root)" "应该标注 related project 来源"
 }
 
+it "query recall 应该优先主项目高 salience 记忆"
+test_generate_query_recall_context_prefers_primary_project() {
+    local project="/test/recall-priority"
+    local related="/test/recall-priority-related"
+
+    link_projects "$project" "$related" "manual" 95 "priority test"
+    store_memory "session1" "$project" "decision" "主项目 recall 命中" "主项目 recall 摘要" "priority" "" "manual" "durable" "always" "$project" > /dev/null
+    store_memory "session2" "$related" "decision" "关联项目 recall 命中" "关联项目 recall 摘要" "priority" "" "manual" "durable" "always" "$related" > /dev/null
+
+    local result
+    result=$(generate_query_recall_context "$project" "priority" 1)
+    assert_contains "$result" "主项目 recall 摘要" "主项目命中应优先保留"
+    assert_not_contains "$result" "关联项目 recall 摘要" "limit=1 时 related project 结果不应抢占主项目"
+}
+
 it "git worktree 场景下应该识别 related project"
 test_related_project_resolution_via_git_worktree() {
     local repo_dir="/tmp/ccmem-main-repo-$$"
@@ -893,6 +943,7 @@ test_content_hash_different_for_different_category
 test_store_memory_success
 test_store_memory_all_fields
 test_store_memory_metadata_fields
+test_store_memory_classification_snapshot_fields
 test_backfill_legacy_metadata_fields
 test_store_memory_sets_epoch
 
@@ -938,6 +989,8 @@ test_generate_epoch_timestamp
 # SessionStart 测试
 test_get_recent_project_memories
 test_rank_memory_for_sessionstart
+test_score_memory_salience
+test_score_memory_salience_prefers_current_project
 test_select_sessionstart_memories
 test_generate_sessionstart_context
 test_sessionstart_related_project_memory
@@ -946,6 +999,7 @@ test_sessionstart_context_timestamp
 test_sessionstart_priority_order
 test_generate_query_recall_context
 test_generate_query_recall_context_related_project
+test_generate_query_recall_context_prefers_primary_project
 test_related_project_resolution_via_git_worktree
 
 # 打印测试报告

@@ -4,6 +4,8 @@ HOOK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HOOK_UTILS_DIR/classification.sh"
 source "$HOOK_UTILS_DIR/memory_policy.sh"
 
+CLASSIFICATION_RULE_VERSION="rule-v1"
+
 hook_log() {
     local hook_name="$1"
     shift
@@ -113,7 +115,7 @@ hook_classify_memory() {
     confidence=$(printf "%s\n" "$result" | cut -d'|' -f2)
     reason=$(printf "%s\n" "$result" | cut -d'|' -f3-)
 
-    hook_log "$hook_name" "CLASSIFICATION_SOURCE=rule CATEGORY=$category CONFIDENCE=$confidence REASON=$reason"
+    hook_log "$hook_name" "CLASSIFICATION_SOURCE=rule CLASSIFICATION_VERSION=$CLASSIFICATION_RULE_VERSION CATEGORY=$category CONFIDENCE=$confidence REASON=$reason"
     printf "%s|%s|%s\n" "$category" "$confidence" "$reason"
 }
 

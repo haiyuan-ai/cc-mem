@@ -44,26 +44,138 @@ rank_memory_for_sessionstart() {
     echo "$score"
 }
 
-select_sessionstart_memories() {
-    local project_path="$1"
-    local limit="${2:-3}"
-    local project_root
-    local project_root_escaped
+score_memory_salience() {
+    local category="$1"
+    local confidence="${2:-0}"
+    local source="$3"
+    local memory_kind="$4"
+    local auto_inject_policy="$5"
+    local timestamp_epoch="$6"
+    local memory_project_root="$7"
+    local current_project_root="$8"
+    local score=0
+    local now_ts=0
+    local age_seconds=0
 
-    project_root=$(resolve_project_root "$project_path")
-    project_root_escaped=$(sql_escape "$project_root")
+    case "$auto_inject_policy" in
+        always) score=$((score + 40)) ;;
+        conditional) score=$((score + 20)) ;;
+        manual_only) score=$((score + 0)) ;;
+        *) score=$((score - 100)) ;;
+    esac
 
-    sqlite3 -separator '|' "$MEMORY_DB" <<EOF | awk -F'|' -v limit="$limit" '
+    case "$memory_kind" in
+        durable) score=$((score + 30)) ;;
+        working) score=$((score + 15)) ;;
+    esac
+
+    case "$category" in
+        decision) score=$((score + 30)) ;;
+        pattern) score=$((score + 28)) ;;
+        solution) score=$((score + 24)) ;;
+        debug) score=$((score + 16)) ;;
+        context) score=$((score + 8)) ;;
+    esac
+
+    if [[ "$confidence" =~ ^[0-9]+$ ]]; then
+        score=$((score + confidence / 5))
+    else
+        confidence=0
+    fi
+
+    case "$source" in
+        manual) score=$((score + 20)) ;;
+        stop_summary) score=$((score + 10)) ;;
+        user_prompt_submit) score=$((score + 8)) ;;
+        post_tool_use|session_end) score=$((score + 2)) ;;
+    esac
+
+    if [ -n "$current_project_root" ] && [ "$memory_project_root" = "$current_project_root" ]; then
+        score=$((score + 20))
+    fi
+
+    now_ts=$(date +%s 2>/dev/null || echo "0")
+    if [[ "$timestamp_epoch" =~ ^[0-9]+$ ]] && [ "$timestamp_epoch" -gt 0 ] && [ "$now_ts" -gt "$timestamp_epoch" ]; then
+        age_seconds=$((now_ts - timestamp_epoch))
+        if [ "$age_seconds" -le 259200 ]; then
+            score=$((score + 12))
+        elif [ "$age_seconds" -le 604800 ]; then
+            score=$((score + 8))
+        elif [ "$age_seconds" -le 2592000 ]; then
+            score=$((score + 4))
+        fi
+    fi
+
+    if [ "$confidence" -lt 55 ]; then
+        case "$source" in
+            post_tool_use|session_end|stop_final_response)
+                score=$((score - 10))
+                ;;
+        esac
+    fi
+
+    if [ "$confidence" -lt 45 ]; then
+        case "$source" in
+            post_tool_use|session_end)
+                score=$((score - 15))
+                ;;
+        esac
+    fi
+
+    echo "$score"
+}
+
+score_memory_rows() {
+    local current_project_root="$1"
+    local rows="$2"
+
+    [ -z "$rows" ] && return
+
+    while IFS='|' read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch project_root classification_confidence content; do
+        [ -z "$id" ] && continue
+        local confidence
+        local score
+        confidence="$classification_confidence"
+        if [[ ! "$confidence" =~ ^[0-9]+$ ]]; then
+            confidence=$(classify_memory_confidence "$source" "$summary" "$content" "$tags" "$concepts")
+        fi
+        score=$(score_memory_salience "$category" "$confidence" "$source" "$memory_kind" "$auto_inject_policy" "$timestamp_epoch" "$project_root" "$current_project_root")
+        printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            "$score" "$confidence" "$id" "$timestamp" "$category" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$timestamp_epoch" "$project_root"
+    done <<EOF
+$rows
+EOF
+}
+
+select_top_scored_memories() {
+    local current_project_root="$1"
+    local rows="$2"
+    local limit="${3:-3}"
+
+    score_memory_rows "$current_project_root" "$rows" | sort -t'|' -k1,1nr -k2,2nr -k12,12nr | awk -F'|' -v limit="$limit" '
 BEGIN { count = 0 }
 {
-    summary = $4
+    summary = $6
     if (summary == "" || seen[summary]) next
     seen[summary] = 1
     print $0
     count++
     if (count >= limit) exit
 }'
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
+}
+
+select_sessionstart_memories() {
+    local project_path="$1"
+    local limit="${2:-3}"
+    local project_root
+    local project_root_escaped
+    local candidates
+
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND summary IS NOT NULL
@@ -98,6 +210,9 @@ ORDER BY
   timestamp_epoch DESC
 LIMIT 20;
 EOF
+)
+
+    select_top_scored_memories "$project_root" "$candidates" "$limit"
 }
 
 select_related_sessionstart_memories() {
@@ -106,7 +221,10 @@ select_related_sessionstart_memories() {
     local related_roots
     local related_root=""
     local related_root_escaped
+    local current_project_root
+    local candidates
 
+    current_project_root=$(resolve_project_root "$project_path")
     related_roots=$(resolve_related_projects "$project_path" "$limit")
     related_root=$(printf "%s\n" "$related_roots" | head -1)
     if [ -z "$related_root" ]; then
@@ -115,13 +233,8 @@ select_related_sessionstart_memories() {
 
     related_root_escaped=$(sql_escape "$related_root")
 
-    sqlite3 -separator '|' "$MEMORY_DB" <<EOF | awk -F'|' '
-{
-    if ($4 == "" || seen[$4]) next
-    seen[$4] = 1
-    print $0
-}'
-SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, project_root
+    candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$related_root_escaped'
   AND summary IS NOT NULL
@@ -150,6 +263,9 @@ ORDER BY
   timestamp_epoch DESC
 LIMIT $limit;
 EOF
+)
+
+    select_top_scored_memories "$current_project_root" "$candidates" "$limit"
 }
 
 get_last_stop_summary() {
@@ -254,7 +370,7 @@ query_recall_memories_for_root() {
 
     if contains_cjk "$query"; then
         sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, category, summary, tags, source, project_root
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND auto_inject_policy IN ('always', 'conditional')
@@ -266,17 +382,14 @@ WHERE project_root = '$project_root_escaped'
       OR tags LIKE '%${query_escaped}%'
       OR concepts LIKE '%${query_escaped}%'
   )
-ORDER BY
-  CASE auto_inject_policy WHEN 'always' THEN 4 WHEN 'conditional' THEN 3 ELSE 1 END DESC,
-  CASE memory_kind WHEN 'durable' THEN 3 WHEN 'working' THEN 2 ELSE 1 END DESC,
-  timestamp_epoch DESC
-LIMIT $limit;
+ORDER BY timestamp_epoch DESC
+LIMIT 20;
 EOF
         return
     fi
 
     sqlite3 -separator '|' "$MEMORY_DB" <<EOF
-SELECT id, category, summary, tags, source, project_root
+SELECT id, timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
   AND auto_inject_policy IN ('always', 'conditional')
@@ -285,11 +398,8 @@ WHERE project_root = '$project_root_escaped'
       rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
       OR concepts LIKE '%${query_escaped}%'
   )
-ORDER BY
-  CASE auto_inject_policy WHEN 'always' THEN 4 WHEN 'conditional' THEN 3 ELSE 1 END DESC,
-  CASE memory_kind WHEN 'durable' THEN 3 WHEN 'working' THEN 2 ELSE 1 END DESC,
-  timestamp_epoch DESC
-LIMIT $limit;
+ORDER BY timestamp_epoch DESC
+LIMIT 20;
 EOF
 }
 
@@ -303,6 +413,7 @@ select_query_recall_memories() {
     local related_memories=""
     local current_count=0
     local remaining=0
+    local combined=""
 
     if [ -z "$query" ]; then
         return
@@ -310,7 +421,7 @@ select_query_recall_memories() {
 
     project_root=$(resolve_project_root "$project_path")
     primary_memories=$(query_recall_memories_for_root "$project_root" "$query" "$limit")
-    current_count=$(count_result_rows "$primary_memories")
+    current_count=$(count_result_rows "$(select_top_scored_memories "$project_root" "$primary_memories" "$limit")")
 
     if [ "$current_count" -lt "$limit" ]; then
         remaining=$((limit - current_count))
@@ -320,19 +431,8 @@ select_query_recall_memories() {
         fi
     fi
 
-    {
-        printf "%s\n" "$primary_memories"
-        printf "%s\n" "$related_memories"
-    } | awk -F'|' -v limit="$limit" '
-BEGIN { count = 0 }
-{
-    if ($0 == "") next
-    if (seen[$3]) next
-    seen[$3] = 1
-    print $0
-    count++
-    if (count >= limit) exit
-}'
+    combined=$(printf "%s\n%s\n" "$primary_memories" "$related_memories")
+    select_top_scored_memories "$project_root" "$combined" "$limit"
 }
 
 generate_query_recall_context() {
@@ -350,12 +450,12 @@ generate_query_recall_context() {
     echo "Relevant project context for the current request (use only if relevant):"
     echo "$recall_memories" | awk -F'|' -v current_root="$(resolve_project_root "$project_path")" '
     {
-        if (seen[$3]) next
-        seen[$3] = 1
-        if ($6 != "" && $6 != current_root) {
-            printf("- [%s] %s (related: %s)\n", $2, $3, $6)
+        if (seen[$6]) next
+        seen[$6] = 1
+        if ($13 != "" && $13 != current_root) {
+            printf("- [%s] %s (related: %s)\n", $5, $6, $13)
         } else {
-            printf("- [%s] %s\n", $2, $3)
+            printf("- [%s] %s\n", $5, $6)
         }
     }'
     echo "</cc-mem-recall>"
@@ -389,7 +489,7 @@ EOF
 
     if [ -n "$high_value_memories" ]; then
         local main_category
-        main_category=$(echo "$high_value_memories" | head -1 | cut -d'|' -f3)
+        main_category=$(echo "$high_value_memories" | head -1 | cut -d'|' -f5)
         echo "- 最近工作集中在：${main_category:-项目开发}"
         echo "- 当前上下文重点：查看下方高价值记忆"
     else
@@ -402,7 +502,7 @@ EOF
 
     if [ -n "$high_value_memories" ]; then
         local i=1
-        echo "$high_value_memories" | while IFS='|' read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy; do
+        echo "$high_value_memories" | while IFS='|' read -r score confidence id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch project_root; do
             echo "$i. [$category] $summary"
             if [ -n "$tags" ]; then
                 echo "   tags: $tags"
@@ -416,7 +516,7 @@ EOF
     if [ -n "$related_memories" ]; then
         echo ""
         echo "Related Project Memory"
-        echo "$related_memories" | while IFS='|' read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy related_root; do
+        echo "$related_memories" | while IFS='|' read -r score confidence id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch related_root; do
             echo "- [$category] $summary"
             echo "  related project: $related_root"
         done

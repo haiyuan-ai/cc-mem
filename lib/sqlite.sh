@@ -168,6 +168,10 @@ ensure_column_exists() {
 
 ensure_schema_columns() {
     ensure_column_exists "memories" "source" "source TEXT DEFAULT 'manual'"
+    ensure_column_exists "memories" "classification_confidence" "classification_confidence INTEGER"
+    ensure_column_exists "memories" "classification_reason" "classification_reason TEXT"
+    ensure_column_exists "memories" "classification_source" "classification_source TEXT"
+    ensure_column_exists "memories" "classification_version" "classification_version TEXT"
     ensure_column_exists "memories" "memory_kind" "memory_kind TEXT DEFAULT 'working'"
     ensure_column_exists "memories" "auto_inject_policy" "auto_inject_policy TEXT DEFAULT 'conditional'"
     ensure_column_exists "memories" "project_root" "project_root TEXT"
@@ -214,6 +218,28 @@ WHERE source IS NULL OR source = ''
 UPDATE sessions
 SET project_root = COALESCE(NULLIF(project_root, ''), project_path)
 WHERE project_root IS NULL OR project_root = '';
+
+UPDATE memories
+SET classification_source = CASE
+    WHEN classification_source IS NOT NULL AND classification_source != '' THEN classification_source
+    WHEN source = 'manual' THEN 'manual'
+    ELSE NULL
+END,
+classification_version = CASE
+    WHEN classification_version IS NOT NULL AND classification_version != '' THEN classification_version
+    WHEN source = 'manual' THEN 'manual'
+    ELSE NULL
+END,
+classification_confidence = CASE
+    WHEN classification_confidence IS NOT NULL THEN classification_confidence
+    WHEN source = 'manual' THEN 100
+    ELSE NULL
+END,
+classification_reason = CASE
+    WHEN classification_reason IS NOT NULL AND classification_reason != '' THEN classification_reason
+    WHEN source = 'manual' THEN 'user-specified'
+    ELSE NULL
+END;
 EOF
 
     backfill_project_roots
@@ -328,6 +354,10 @@ CREATE TABLE IF NOT EXISTS memories (
     project_root TEXT,
     category TEXT CHECK(category IN ('decision', 'solution', 'pattern', 'debug', 'context')),
     source TEXT DEFAULT 'manual',
+    classification_confidence INTEGER,
+    classification_reason TEXT,
+    classification_source TEXT,
+    classification_version TEXT,
     memory_kind TEXT DEFAULT 'working',
     auto_inject_policy TEXT DEFAULT 'conditional',
     expires_at TEXT,
@@ -459,6 +489,10 @@ store_memory() {
     local auto_inject_policy="${10}"
     local project_root="${11}"
     local expires_at="${12}"
+    local classification_confidence="${13}"
+    local classification_reason="${14}"
+    local classification_source="${15}"
+    local classification_version="${16}"
 
     content=$(strip_injected_context_blocks "$content")
     summary=$(strip_injected_context_blocks "$summary")
@@ -484,6 +518,9 @@ store_memory() {
     local concepts_escaped
     local content_hash_escaped
     local source_escaped
+    local classification_reason_escaped
+    local classification_source_escaped
+    local classification_version_escaped
     local memory_kind_escaped
     local auto_inject_policy_escaped
     local project_root_escaped
@@ -509,6 +546,22 @@ store_memory() {
         expires_at=$(infer_expires_at "$source" "$memory_kind")
     fi
 
+    if [ -z "$classification_source" ] && [ "$source" = "manual" ]; then
+        classification_source="manual"
+    fi
+
+    if [ -z "$classification_version" ] && [ "$source" = "manual" ]; then
+        classification_version="manual"
+    fi
+
+    if [ -z "$classification_confidence" ] && [ "$source" = "manual" ]; then
+        classification_confidence="100"
+    fi
+
+    if [ -z "$classification_reason" ] && [ "$source" = "manual" ]; then
+        classification_reason="user-specified"
+    fi
+
     if [ -z "$summary" ]; then
         summary="${content:0:100}..."
     fi
@@ -532,6 +585,9 @@ store_memory() {
     concepts_escaped=$(sql_escape "$concepts")
     content_hash_escaped=$(sql_escape "$content_hash")
     source_escaped=$(sql_escape "$source")
+    classification_reason_escaped=$(sql_escape "$classification_reason")
+    classification_source_escaped=$(sql_escape "$classification_source")
+    classification_version_escaped=$(sql_escape "$classification_version")
     memory_kind_escaped=$(sql_escape "$memory_kind")
     auto_inject_policy_escaped=$(sql_escape "$auto_inject_policy")
     project_root_escaped=$(sql_escape "$project_root")
@@ -540,13 +596,18 @@ store_memory() {
     sqlite3 "$MEMORY_DB" <<EOF
 INSERT INTO memories (
     id, session_id, project_path, project_root, category, source, memory_kind,
-    auto_inject_policy, expires_at, content, content_preview, summary, tags,
-    concepts, timestamp_epoch, content_hash
+    auto_inject_policy, expires_at, classification_confidence, classification_reason,
+    classification_source, classification_version, content, content_preview, summary,
+    tags, concepts, timestamp_epoch, content_hash
 )
 VALUES (
     '$id_escaped', '$session_id_escaped', '$project_path_escaped', '$project_root_escaped',
     '$category_escaped', '$source_escaped', '$memory_kind_escaped',
     '$auto_inject_policy_escaped', NULLIF('$expires_at_escaped', ''),
+    NULLIF('${classification_confidence}', ''),
+    NULLIF('$classification_reason_escaped', ''),
+    NULLIF('$classification_source_escaped', ''),
+    NULLIF('$classification_version_escaped', ''),
     '$content_escaped', '$content_preview_escaped', '$summary_escaped',
     '$tags_escaped', '$concepts_escaped', $epoch, '$content_hash_escaped'
 );

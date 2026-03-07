@@ -119,11 +119,16 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
       "source": "github",
       "repo": "haiyuan-ai/cc-mem"
     },
-    "installLocation": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
+    "installLocation": "/ABSOLUTE/PATH/TO/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
     "lastUpdated": "2026-03-07T00:00:00.000Z"
   }
 }
 ```
+
+请填写真实绝对路径，不要写 `$HOME` 或 `~`。
+例如：
+- macOS: `/Users/yourname/.claude/plugins/marketplaces/haiyuan-ai-cc-mem`
+- Linux/WSL: `/home/yourname/.claude/plugins/marketplaces/haiyuan-ai-cc-mem`
 
 **步骤 3: 注册已安装插件**
 
@@ -133,7 +138,7 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
 "cc-mem@haiyuan-ai-cc-mem": [
   {
     "scope": "user",
-    "installPath": "/Users/YOUR_USERNAME/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
+    "installPath": "/ABSOLUTE/PATH/TO/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
     "version": "1.5.0",
     "installedAt": "2026-03-07T00:00:00.000Z",
     "lastUpdated": "2026-03-07T00:00:00.000Z",

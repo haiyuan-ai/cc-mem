@@ -33,19 +33,19 @@ Claude Code 轻量级记忆管理系统
 
 ## 功能特性
 
-- **自动捕获**：PostToolUse / Stop / SessionEnd 自动沉淀工作过程
+- **自动采集**：PostToolUse / UserPromptSubmit / Stop / SessionEnd 持续沉淀工作过程
 - **实时注入**：SessionStart 预热上下文 + UserPromptSubmit query-aware recall
 - **分层记忆**：按来源、生命周期和自动注入资格组织记忆
 - **跨项目关联**：通过 `project_links` 受控补充 related project 记忆
 - **自动裁剪**：Stop / SessionEnd 会对超长回复和日志做本地裁剪
-- **规则分类**：自动采集路径共享同一套本地分类器，并记录置信度与原因
-- **持久化存储**：SQLite 数据库 + FTS5 全文检索
-- **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
+- **规则分类**：自动采集路径共享同一套本地分类器，生成类别、置信度与原因，并参与分层决策
+- **持久化存储**：SQLite 本地数据库
+- **分层检索**：支持 FTS、中文 fallback、timeline、related project recall
 - **Markdown 导出**：导出为标准 Markdown 文件
-- **Hooks 集成**：SessionStart/UserPromptSubmit 自动注入，PostToolUse/Stop/SessionEnd 自动捕获
-- **记忆历史**：记录 create/update/delete 事件
-- **内容去重**：SHA256 哈希，自动检测重复内容
-- **概念标签**：7 种预定义概念，自动识别
+- **Hooks 集成**：SessionStart / UserPromptSubmit 自动注入，PostToolUse / Stop / SessionEnd 自动采集
+- **记忆历史**：记录记忆事件与变更轨迹
+- **内容去重**：基于内容哈希自动检测重复记忆
+- **概念标签**：预定义概念自动识别
 
 ## 快速链接
 

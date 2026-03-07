@@ -25,6 +25,7 @@
 |------|---------|------|
 | 数据库初始化 | 7 | ✅ |
 | 项目关联 | 3 | ✅ |
+| 自动分类 | 5 | ✅ |
 | 记忆清理 | 3 | ✅ |
 | ID 生成 | 3 | ✅ |
 | 内容哈希 | 4 | ✅ |
@@ -75,9 +76,9 @@
 | 可执行权限 | 5 | ✅ |
 | PostToolUse 功能 | 2 | ✅ |
 | UserPromptSubmit 功能 | 1 | ✅ |
-| SessionStart / recall 注入 | 2 | ✅ |
+| SessionStart / recall 注入 | 3 | ✅ |
 | Stop Hook 功能 | 4 | ✅ |
-| 批量保存阈值与自动清理 | 4 | ✅ |
+| 批量保存阈值与自动清理 | 5 | ✅ |
 | Hooks 配置 | 2 | ✅ |
 
 ---
@@ -90,6 +91,7 @@
 | 内容去重 | ✅ | ✅ | ✅ |
 | 记忆历史 | ✅ | ✅ | ✅ |
 | 全文检索 (FTS5) | ✅ | ✅ | ✅ |
+| 规则自动分类 | ✅ | - | ✅ |
 | 概念标签 | ✅ | ✅ | ✅ |
 | 私有内容过滤 | ✅ | ✅ | ✅ |
 | 三层检索 | ✅ | ✅ | ✅ |
@@ -107,7 +109,7 @@
 
 ```
 tests/
-├── test_framework.sh       # 测试框架（267 行，12 个函数）
+├── test_framework.sh       # 测试框架（持续演进）
 ├── test_sqlite.sh          # SQLite 库测试
 ├── test_cli.sh             # CLI 命令测试
 ├── test_edge_cases.sh      # 边界条件测试
@@ -119,8 +121,11 @@ tests/
 **核心库**:
 ```
 lib/
-├── sqlite.sh               # SQLite 操作库（持续演进）
-└── content_utils.sh        # 概念识别与私有内容过滤（3 个函数）
+├── sqlite.sh               # SQLite 聚合入口
+├── classification.sh       # 规则分类器
+├── injection.sh            # 注入与 recall 逻辑
+├── memory_policy.sh        # 分层与清理策略
+└── content_utils.sh        # 概念识别与私有内容过滤
 ```
 
 **Hooks**:

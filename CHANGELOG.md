@@ -2,6 +2,18 @@
 
 ## [1.5.1] - 2026-03-07
 
+### 🧠 Rule-Based Memory Classification
+
+- 新增 `lib/classification.sh`，提供统一的规则分类入口
+- 自动采集路径改为共享同一套分类器：
+  - `post_tool_use`
+  - `user_prompt_submit`
+  - `session_end`
+  - `stop_summary`
+- 分类输出不再只有 `category`，同时生成 `confidence` 和 `reason`
+- hooks debug log 现在会记录 `CLASSIFICATION_SOURCE=rule`、分类结果、置信度与分类理由
+- 第一阶段仅影响自动采集路径的 `category`，不改动手动指定类别，也暂不直接改写 `memory_kind / auto_inject_policy`
+
 ### 🧹 Cleanup Strategy Upgrade
 
 - `cleanup` 命令改为默认安全模式，只清理低优先级临时记忆
@@ -18,6 +30,8 @@
 
 ### 🧪 Testing
 
+- 新增规则分类器单元测试
+- 新增 `user-prompt-submit` / `session-end` 分类集成测试
 - 新增 safe/aggressive cleanup 测试
 - 新增 hook 自动清理与节流测试
 - 新增 `project_links` 数据层测试

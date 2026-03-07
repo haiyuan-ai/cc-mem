@@ -38,6 +38,7 @@ Claude Code 轻量级记忆管理系统
 - **分层记忆**：按来源、生命周期和自动注入资格组织记忆
 - **跨项目关联**：通过 `project_links` 受控补充 related project 记忆
 - **自动裁剪**：Stop / SessionEnd 会对超长回复和日志做本地裁剪
+- **规则分类**：自动采集路径共享同一套本地分类器，并记录置信度与原因
 - **持久化存储**：SQLite 数据库 + FTS5 全文检索
 - **智能检索**：支持 FTS、中文 fallback、timeline、related project recall
 - **Markdown 导出**：导出为标准 Markdown 文件
@@ -601,7 +602,7 @@ done < notes.txt
 
 在用户输入提示前批量保存记忆，并执行轻量 recall：
 
-- **自动分类**：根据内容识别 debug/solution/decision/context
+- **规则分类**：根据来源、摘要、内容、标签、概念推导 `debug/solution/decision/pattern/context`
 - **批量保存**：将累积的操作记录一次性保存到数据库
 - **Query Recall**：基于当前 prompt 检索 2-3 条相关摘要
 - **中文支持**：中文查询优先 FTS，结果不足时回退到 LIKE
@@ -658,6 +659,31 @@ ccmem-cli.sh capture -t "important,architecture,database"
 - `user_prompt_submit / stop_summary` -> `working + conditional`
 - `post_tool_use / session_end` -> `temporary + never`
 - `stop_final_response` -> `temporary + manual_only`
+
+### 自动分类
+
+当前自动分类器采用本地规则，不依赖 LLM，主要用于自动采集路径：
+
+- `post_tool_use`
+- `user_prompt_submit`
+- `session_end`
+- `stop_summary`
+
+分类器会综合考虑：
+
+- `source`
+- `summary`
+- `content`
+- `tags`
+- `concepts`
+
+当前输出：
+
+- `category`
+- `confidence`
+- `reason`
+
+这些结果会写入 debug log，便于排查为什么某条自动记忆被归类为 `debug`、`solution`、`decision`、`pattern` 或 `context`。
 
 ---
 

@@ -36,10 +36,13 @@ function makeSyntheticTextPart(sessionID: string, messageID: string, text: strin
 
 const plugin: Plugin = async (input) => {
   const projectPath = input.directory || input.worktree
+  const injectedSessions = new Set<string>()
 
   return {
-    "experimental.chat.system.transform": async (_event, output) => {
+    "experimental.chat.system.transform": async (event, output) => {
+      if (event.sessionID && injectedSessions.has(event.sessionID)) return
       await appendInjectContext(output.system, projectPath)
+      if (event.sessionID) injectedSessions.add(event.sessionID)
     },
 
     "chat.message": async (_event, output) => {
@@ -55,12 +58,13 @@ const plugin: Plugin = async (input) => {
     },
 
     "tool.execute.after": async (event, output) => {
-      await captureToolResult({
+      void captureToolResult({
         projectPath,
         sessionID: event.sessionID,
         tool: event.tool,
         title: output.title,
-        output: output.output
+        output: output.output,
+        metadata: output.metadata
       })
     }
   }

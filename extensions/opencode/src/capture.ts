@@ -1,5 +1,8 @@
 import { captureMemory } from "./mcp-client.js"
 
+const MAX_CAPTURE_CHARS = 2000
+const MAX_CAPTURE_LINES = 24
+
 function inferCategory(tool: string, title: string, output: string) {
   const text = `${tool} ${title} ${output}`.toLowerCase()
   if (/(fix|fixed|修复|解决|workaround)/.test(text)) return "solution"
@@ -11,9 +14,39 @@ function inferCategory(tool: string, title: string, output: string) {
 
 function shouldCapture(tool: string, output: string) {
   if (!output?.trim()) return false
-  if (tool === "read" || tool === "grep" || tool === "glob") return false
-  if (output.trim().length < 20) return false
+  if (/(^|[_-])(read|grep|glob|find|search|list|ls|stat|pwd)([_-]|$)/i.test(tool)) return false
+  if (!/(edit|write|patch|apply|bash|shell|command|create|delete|move|rename|file)/i.test(tool)) return false
+  if (output.trim().length < 40) return false
   return true
+}
+
+function condenseOutput(title: string, output: string) {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const selected: string[] = []
+
+  if (title?.trim()) selected.push(title.trim())
+
+  for (const line of lines) {
+    if (selected.length >= MAX_CAPTURE_LINES) break
+    if (
+      /(fix|fixed|解决|修复|error|timeout|failed|success|updated|created|deleted|changed|warning|decision|pattern|debug|排查|原因|约定|统一)/i.test(
+        line
+      )
+    ) {
+      selected.push(line)
+    }
+  }
+
+  for (const line of lines) {
+    if (selected.length >= MAX_CAPTURE_LINES) break
+    if (!selected.includes(line)) selected.push(line)
+  }
+
+  return selected.join("\n").slice(0, MAX_CAPTURE_CHARS).trim()
 }
 
 function buildSummary(tool: string, title: string, output: string) {
@@ -27,20 +60,21 @@ export async function captureToolResult(args: {
   tool: string
   title: string
   output: string
+  metadata?: Record<string, unknown>
 }) {
   const { projectPath, sessionID, tool, title, output } = args
   if (!projectPath || !shouldCapture(tool, output)) return
 
   const category = inferCategory(tool, title, output)
   const summary = buildSummary(tool, title, output)
-  const content = `[OpenCode:${tool}] ${title}\n\n${output}`.trim()
+  const content = `[OpenCode:${tool}] ${condenseOutput(title, output)}`.trim()
 
-  captureMemory({
+  await captureMemory({
     project_path: projectPath,
     session_id: sessionID,
     category,
     tags: `opencode,tool,${tool}`,
     summary,
     content
-  })
+  }).catch(() => undefined)
 }

@@ -50,6 +50,12 @@ test_opencode_extension_contract() {
     assert_contains "$plugin_content" "\"chat.message\"" "应接入 chat message recall"
     it "应接入 tool execute after capture"
     assert_contains "$plugin_content" "\"tool.execute.after\"" "应接入 tool execute after capture"
+    it "应做 session 级注入去重"
+    assert_contains "$plugin_content" "injectedSessions" "应做 session 级注入去重"
+    it "capture 应使用异步 MCP 调用"
+    assert_not_contains "$(cat "$EXT_DIR/src/mcp-client.ts")" "spawnSync" "capture 应使用异步 MCP 调用"
+    it "capture 应对输出做裁剪"
+    assert_contains "$(cat "$EXT_DIR/src/capture.ts")" "condenseOutput" "capture 应对输出做裁剪"
 
     it "文档应说明 inject-context 能力"
     assert_contains "$readme_content" "ccmem_inject_context" "文档应说明 inject-context 能力"

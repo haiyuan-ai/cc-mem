@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -50,27 +50,65 @@ function callTool(name: string, args: Record<string, unknown>) {
     }
   })
 
-  const proc = spawnSync("python3", [SERVER_PATH], {
-    input: Buffer.concat([initialize, initialized, call]),
-    cwd: REPO_ROOT,
-    encoding: "buffer"
+  return new Promise<TextResult>((resolve, reject) => {
+    const proc = spawn("python3", [SERVER_PATH], {
+      cwd: REPO_ROOT,
+      stdio: ["pipe", "pipe", "pipe"]
+    })
+
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+    const timeout = setTimeout(() => {
+      proc.kill("SIGTERM")
+      reject(new Error("cc-mem MCP server timed out"))
+    }, 5000)
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk)
+    })
+
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk)
+    })
+
+    proc.on("error", (error) => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+
+    proc.on("close", (code) => {
+      clearTimeout(timeout)
+
+      if (code !== 0) {
+        const stderr = Buffer.concat(stderrChunks).toString("utf8").trim()
+        reject(new Error(stderr || `MCP server exited with ${code}`))
+        return
+      }
+
+      const output = Buffer.concat(stdoutChunks)
+      const firstSep = output.indexOf("\r\n\r\n")
+      if (firstSep === -1) {
+        reject(new Error("Invalid MCP initialize response"))
+        return
+      }
+
+      const firstHeader = output.subarray(0, firstSep).toString("utf8")
+      const firstLenMatch = firstHeader.match(/Content-Length:\s*(\d+)/i)
+      if (!firstLenMatch) {
+        reject(new Error("Missing Content-Length in initialize response"))
+        return
+      }
+
+      const firstLen = Number(firstLenMatch[1])
+      const secondStart = firstSep + 4 + firstLen
+      const second = output.subarray(secondStart)
+      const response = parseMessage(second)
+      resolve(response.result as TextResult)
+    })
+
+    proc.stdin.write(Buffer.concat([initialize, initialized, call]))
+    proc.stdin.end()
   })
-
-  if (proc.status !== 0) {
-    throw new Error(proc.stderr?.toString("utf8") || `MCP server exited with ${proc.status}`)
-  }
-
-  const output = proc.stdout as Buffer
-  const firstSep = output.indexOf("\r\n\r\n")
-  if (firstSep === -1) throw new Error("Invalid MCP initialize response")
-  const firstHeader = output.subarray(0, firstSep).toString("utf8")
-  const firstLenMatch = firstHeader.match(/Content-Length:\s*(\d+)/i)
-  if (!firstLenMatch) throw new Error("Missing Content-Length in initialize response")
-  const firstLen = Number(firstLenMatch[1])
-  const secondStart = firstSep + 4 + firstLen
-  const second = output.subarray(secondStart)
-  const response = parseMessage(second)
-  return response.result as TextResult
 }
 
 export function captureMemory(args: {

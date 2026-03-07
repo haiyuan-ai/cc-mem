@@ -13,16 +13,57 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 CONFIG_DIR="$SCRIPT_DIR/config"
 
-# 加载 SQLite 函数库
 source "$LIB_DIR/sqlite.sh"
 source "$LIB_DIR/content_utils.sh"
 
-# 加载配置
 load_config() {
     if [ -f "$CONFIG_DIR/config.json" ]; then
         # 简单的 JSON 解析（仅支持基本类型）
         CONFIG_FILE="$CONFIG_DIR/config.json"
     fi
+}
+
+resolve_effective_project_path() {
+    local project_path="$1"
+    if [ -n "$project_path" ]; then
+        printf '%s\n' "$project_path"
+    else
+        pwd
+    fi
+}
+
+build_default_summary() {
+    local content="$1"
+    printf '%s...\n' "${content:0:100}"
+}
+
+print_unknown_option() {
+    echo "未知选项：$1"
+    return 1
+}
+
+print_command_usage() {
+    echo "用法：ccmem $1"
+}
+
+handle_store_memory_result() {
+    local id="$1"
+    local prefix="${2:-}"
+    local private_warning="${3:-}"
+    local success_message="${4:-记忆已存储}"
+    if [[ "$id" == duplicate:* ]]; then
+        echo "${prefix}跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
+        return 0
+    fi
+    if [[ "$id" == error:* ]]; then
+        echo "${prefix}错误：存储记忆失败 - ${id#error:}"
+        return 1
+    fi
+    if [ -n "$private_warning" ]; then
+        echo "$private_warning"
+    fi
+    echo "${prefix}${success_message}"
+    return 0
 }
 
 ensure_db_ready() {
@@ -40,7 +81,6 @@ ensure_db_ready() {
     fi
 }
 
-# 显示帮助信息
 show_help() {
     cat <<EOF
 CC-Mem CLI - Claude Code 记忆管理工具
@@ -88,7 +128,6 @@ CC-Mem CLI - Claude Code 记忆管理工具
 EOF
 }
 
-# 捕获会话记忆
 cmd_capture() {
     local project_path=""
     local category="context"
@@ -114,7 +153,7 @@ cmd_capture() {
             --project-root) project_root="$2"; shift ;;
             --expires-at) expires_at="$2"; shift ;;
             -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
@@ -127,9 +166,7 @@ cmd_capture() {
     echo "  概念：${concepts:-无}"
 
     # 如果没有指定项目路径，使用当前目录
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
+    project_path="$(resolve_effective_project_path "$project_path")"
 
     # 更新项目访问记录
     update_project_access "$project_path" "$(basename "$project_path")" "$tags"
@@ -158,7 +195,8 @@ cmd_capture() {
 
             filtered_content=$(strip_injected_context_blocks "$filtered_content")
 
-            local summary="${filtered_content:0:100}..."
+            local summary
+            summary=$(build_default_summary "$filtered_content")
 
             # 如果没有指定 concepts，尝试自动识别
             if [ -z "$concepts" ]; then
@@ -170,27 +208,17 @@ cmd_capture() {
 
             local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at")
 
-            # 检查是否重复或错误
-            if [[ "$id" == duplicate:* ]]; then
-                echo "  跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
-            elif [[ "$id" == error:* ]]; then
-                echo "  错误：存储记忆失败 - ${id#error:}"
+            if ! handle_store_memory_result "$id" "  " "$private_warning" "记忆 ID: $id"; then
                 return 1
-            else
-                if [ -n "$private_warning" ]; then
-                    echo "$private_warning"
-                fi
-                echo "  记忆 ID: $id"
-                echo "记忆已存储"
             fi
-            return
+            echo "记忆已存储"
+            return 0
         fi
     fi
 
     echo "没有捕获到内容（从 stdin 为空）"
 }
 
-# 手动存储记忆
 cmd_store() {
     local project_path=""
     local category="context"
@@ -216,14 +244,12 @@ cmd_store() {
             --project-root) project_root="$2"; shift ;;
             --expires-at) expires_at="$2"; shift ;;
             -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
 
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
+    project_path="$(resolve_effective_project_path "$project_path")"
 
     echo "请输入记忆内容（以 EOF 结束）："
     local content=$(cat)
@@ -235,21 +261,13 @@ cmd_store() {
     fi
 
     if [ -z "$summary" ]; then
-        summary="${content:0:100}..."
+        summary=$(build_default_summary "$content")
     fi
 
     local id=$(store_memory "$session_id" "$project_path" "$category" "$content" "$summary" "$tags" "" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at")
-    if [[ "$id" == duplicate:* ]]; then
-        echo "跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
-    elif [[ "$id" == error:* ]]; then
-        echo "错误：存储记忆失败 - ${id#error:}"
-        return 1
-    else
-        echo "记忆已存储：$id"
-    fi
+    handle_store_memory_result "$id" "" "" "记忆已存储：$id"
 }
 
-# 搜索记忆（全文检索，带充分性检查）
 cmd_search() {
     local project_path=""
     local query=""
@@ -265,14 +283,12 @@ cmd_search() {
             -l|--limit) limit="$2"; shift ;;
             --min) min_results="$2"; shift ;;
             -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
 
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
+    project_path="$(resolve_effective_project_path "$project_path")"
 
     echo "搜索记忆..."
     echo "  项目路径：$project_path"
@@ -300,7 +316,6 @@ cmd_search() {
     echo "$results"
 }
 
-# 列出最近的记忆
 cmd_list() {
     local limit=20
     local project_path=""
@@ -311,7 +326,7 @@ cmd_list() {
             -l|--limit) limit="$2"; shift ;;
             -p|--project) project_path="$2"; shift ;;
             -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
@@ -331,7 +346,6 @@ LIMIT $limit;
 EOF
 }
 
-# 导出记忆为 Markdown
 cmd_export() {
     local output_dir=""
     local project_path=""
@@ -341,7 +355,7 @@ cmd_export() {
             -o|--output) output_dir="$2"; shift ;;
             -p|--project) project_path="$2"; shift ;;
             -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
@@ -372,7 +386,6 @@ cmd_export() {
     echo "导出完成"
 }
 
-# 清理过期记忆
 cmd_cleanup() {
     local days=30
     local mode="safe"
@@ -384,7 +397,7 @@ cmd_cleanup() {
             --aggressive) mode="aggressive" ;;
             --limit) limit="$2"; shift ;;
             -h|--help)
-                echo "用法：ccmem cleanup [-d days] [--limit count] [--aggressive]"
+                print_command_usage "cleanup [-d days] [--limit count] [--aggressive]"
                 echo "默认执行安全清理，只删除低优先级临时记忆。"
                 echo ""
                 echo "选项："
@@ -393,7 +406,7 @@ cmd_cleanup() {
                 echo "  --aggressive      扩大到所有已过期记忆和超龄 working 记忆"
                 return
                 ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
@@ -413,7 +426,6 @@ cmd_cleanup() {
     fi
 }
 
-# 列出所有项目
 cmd_projects() {
     echo "=== 项目列表 ==="
     echo ""
@@ -431,17 +443,15 @@ cmd_related_projects() {
             -l|--limit) limit="$2"; shift ;;
             --min-strength) min_strength="$2"; shift ;;
             -h|--help)
-                echo "用法：ccmem related-projects [-p project] [-l limit] [--min-strength score]"
+                print_command_usage "related-projects [-p project] [-l limit] [--min-strength score]"
                 return
                 ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
 
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
+    project_path="$(resolve_effective_project_path "$project_path")"
 
     refresh_project_links "$project_path" >/dev/null 2>&1 || true
 
@@ -472,7 +482,7 @@ cmd_link_projects() {
             --reason) reason="$2"; shift ;;
             --one-way) bidirectional=0 ;;
             -h|--help)
-                echo "用法：ccmem link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
+                print_command_usage "link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
                 return
                 ;;
             *)
@@ -490,7 +500,7 @@ cmd_link_projects() {
     done
 
     if [ -z "$source_root" ] || [ -z "$target_root" ]; then
-        echo "用法：ccmem link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
+        print_command_usage "link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
         return 1
     fi
 
@@ -510,7 +520,7 @@ cmd_unlink_projects() {
         case $1 in
             --one-way) bidirectional=0 ;;
             -h|--help)
-                echo "用法：ccmem unlink-projects <source_root> <target_root> [--one-way]"
+                print_command_usage "unlink-projects <source_root> <target_root> [--one-way]"
                 return
                 ;;
             *)
@@ -528,7 +538,7 @@ cmd_unlink_projects() {
     done
 
     if [ -z "$source_root" ] || [ -z "$target_root" ]; then
-        echo "用法：ccmem unlink-projects <source_root> <target_root> [--one-way]"
+        print_command_usage "unlink-projects <source_root> <target_root> [--one-way]"
         return 1
     fi
 
@@ -546,23 +556,20 @@ cmd_refresh_project_links() {
         case $1 in
             -p|--project) project_path="$2"; shift ;;
             -h|--help)
-                echo "用法：ccmem refresh-project-links [-p project]"
+                print_command_usage "refresh-project-links [-p project]"
                 return
                 ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
 
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
+    project_path="$(resolve_effective_project_path "$project_path")"
 
     refresh_project_links "$project_path"
     echo "已刷新项目关联：$(resolve_project_root "$project_path")"
 }
 
-# 查看记忆历史
 cmd_history() {
     local memory_id=""
     local limit=10
@@ -599,7 +606,6 @@ cmd_history() {
     fi
 }
 
-# 获取时间线上下文
 cmd_timeline() {
     local anchor_id=""
     local depth_before=3
@@ -611,13 +617,13 @@ cmd_timeline() {
             -b|--before) depth_before="$2"; shift ;;
             -A|--after) depth_after="$2"; shift ;;
             -h|--help) show_help; return ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
 
     if [ -z "$anchor_id" ]; then
-        echo "用法：ccmem timeline -a <memory_id> [-b before] [-A after]"
+        print_command_usage "timeline -a <memory_id> [-b before] [-A after]"
         return 1
     fi
 
@@ -629,7 +635,6 @@ cmd_timeline() {
     get_timeline "$anchor_id" "$depth_before" "$depth_after"
 }
 
-# 获取单条记忆详情
 cmd_get() {
     local memory_ids=()
 
@@ -642,7 +647,7 @@ cmd_get() {
     done
 
     if [ ${#memory_ids[@]} -eq 0 ]; then
-        echo "用法：ccmem get <memory_id> [memory_id2] ..."
+        print_command_usage "get <memory_id> [memory_id2] ..."
         return 1
     fi
 
@@ -656,7 +661,6 @@ cmd_get() {
     done
 }
 
-# 显示状态
 cmd_status() {
     echo "=== CC-Mem 状态 ==="
     echo ""
@@ -704,7 +708,6 @@ cmd_status() {
     echo "脚本目录：$SCRIPT_DIR"
 }
 
-# 开场注入上下文生成
 cmd_inject_context() {
     local project_path=""
     local limit=3
@@ -714,7 +717,7 @@ cmd_inject_context() {
             -p|--project) project_path="$2"; shift ;;
             -l|--limit) limit="$2"; shift ;;
             -h|--help)
-                echo "用法：ccmem inject-context [-p project] [-l limit]"
+                print_command_usage "inject-context [-p project] [-l limit]"
                 echo "生成开场注入上下文"
                 echo ""
                 echo "选项："
@@ -722,19 +725,16 @@ cmd_inject_context() {
                 echo "  -l, --limit      高价值记忆数量（默认 3）"
                 return
                 ;;
-            *) echo "未知选项：$1"; return 1 ;;
+            *) print_unknown_option "$1"; return 1 ;;
         esac
         shift
     done
 
-    if [ -z "$project_path" ]; then
-        project_path="$(pwd)"
-    fi
+    project_path="$(resolve_effective_project_path "$project_path")"
 
     generate_injection_context "$project_path" "$limit"
 }
 
-# 主函数
 main() {
     load_config
 

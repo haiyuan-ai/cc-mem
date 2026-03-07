@@ -52,7 +52,7 @@ echo "[user-prompt-submit] $(date): Checking LOG_FILE=$LOG_FILE" >> "$DEBUG_LOG"
 
 if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     CONTENT=$(cat "$LOG_FILE")
-    echo "[user-prompt-submit] $(date): Log file exists with content" >> "$DEBUG_LOG"
+    echo "[user-prompt-submit] $(date): Log file exists with content, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}" >> "$DEBUG_LOG"
 
     # 确定类别
     CATEGORY="context"
@@ -63,6 +63,7 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|decided"; then
         CATEGORY="decision"
     fi
+    echo "[user-prompt-submit] $(date): Derived CATEGORY=$CATEGORY from buffered log" >> "$DEBUG_LOG"
 
     # 标签提取
     TAGS="auto-captured"
@@ -85,9 +86,23 @@ fi
 
 if [ -n "$USER_PROMPT" ] && [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
     source "$PLUGIN_DIR/lib/sqlite.sh" 2>/dev/null || true
+    PROJECT_ROOT="$PROJECT_PATH"
+    if command -v resolve_project_root &> /dev/null; then
+        PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
+    fi
+    echo "[user-prompt-submit] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+    if command -v list_related_projects &> /dev/null; then
+        related_preview=$(list_related_projects "$PROJECT_ROOT" 3 70 | cut -d'|' -f1 | paste -sd ',' -)
+        echo "[user-prompt-submit] $(date): RELATED_PROJECTS=${related_preview:-none}" >> "$DEBUG_LOG"
+    fi
     recall_context=$(generate_query_recall_context "$PROJECT_PATH" "$USER_PROMPT" 3 2>/dev/null || true)
     if [ -n "$recall_context" ]; then
+        recall_items=""
+        recall_items=$(printf "%s\n" "$recall_context" | grep -c '^- \[' 2>/dev/null || echo "0")
+        echo "[user-prompt-submit] $(date): Recall generated, items=$recall_items, length=${#recall_context}" >> "$DEBUG_LOG"
         echo "$recall_context"
+    else
+        echo "[user-prompt-submit] $(date): Recall skipped or empty for current prompt" >> "$DEBUG_LOG"
     fi
 fi
 

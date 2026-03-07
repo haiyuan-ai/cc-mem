@@ -47,9 +47,16 @@ else
     echo "[session-start] $(date): WARNING - sqlite.sh not found" >> "$DEBUG_LOG"
 fi
 
+PROJECT_ROOT="$PROJECT_PATH"
+if command -v resolve_project_root &> /dev/null; then
+    PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
+fi
+echo "[session-start] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+
 # 记录会话开始
 if command -v upsert_session &> /dev/null; then
-    upsert_session "$SESSION_ID" "$PROJECT_PATH"
+    upsert_session "$SESSION_ID" "$PROJECT_PATH" "$PROJECT_ROOT"
+    echo "[session-start] $(date): Session upserted with project_root=$PROJECT_ROOT" >> "$DEBUG_LOG"
 fi
 
 # 更新项目访问
@@ -59,5 +66,10 @@ fi
 
 # 注入相关记忆（输出到 stdout，会被 Claude Code 读取）
 if [ -f "$CLI" ]; then
+    if command -v list_related_projects &> /dev/null; then
+        related_preview=$(list_related_projects "$PROJECT_ROOT" 3 70 | cut -d'|' -f1 | paste -sd ',' -)
+        echo "[session-start] $(date): RELATED_PROJECTS=${related_preview:-none}" >> "$DEBUG_LOG"
+    fi
     "$CLI" inject-context -p "$PROJECT_PATH" -l 3 2>/dev/null || true
+    echo "[session-start] $(date): inject-context invoked for project_root=$PROJECT_ROOT" >> "$DEBUG_LOG"
 fi

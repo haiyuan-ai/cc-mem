@@ -48,6 +48,12 @@ else
     exit 1
 fi
 
+PROJECT_ROOT="$PROJECT_PATH"
+if command -v resolve_project_root &> /dev/null; then
+    PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
+fi
+echo "[stop] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+
 # 从 transcript 文件提取最后一条助手消息
 extract_last_assistant_message() {
     local transcript_path="$1"
@@ -157,7 +163,7 @@ main() {
     local operation_log=""
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         operation_log=$(cat "$LOG_FILE")
-        echo "[stop] $(date): Found operation log, length=${#operation_log}" >> "$DEBUG_LOG"
+        echo "[stop] $(date): Found operation log, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#operation_log}" >> "$DEBUG_LOG"
         if should_condense_operation_log "$operation_log"; then
             operation_log=$(summarize_operation_log "$operation_log")
             echo "[stop] $(date): Condensed long operation log before capture" >> "$DEBUG_LOG"
@@ -196,6 +202,7 @@ EOF
         elif echo "$operation_log" | grep -qi "decision\|choose\|select\|create\|add"; then
             CATEGORY="decision"
         fi
+        echo "[stop] $(date): Derived CATEGORY=$CATEGORY for stop_summary capture" >> "$DEBUG_LOG"
 
         # 捕获记忆
         echo "$operation_log" | "$CLI" capture \
@@ -209,6 +216,7 @@ EOF
 
         # 清空日志
         > "$LOG_FILE"
+        echo "[stop] $(date): Buffered log cleared after stop_summary capture" >> "$DEBUG_LOG"
 
         echo "[CC-Mem] 已保存停止时的记忆：$SESSION_ID"
         echo "[stop] $(date): Memory saved from operation log" >> "$DEBUG_LOG"
@@ -226,6 +234,7 @@ EOF
         # 长回复进行结果导向裁剪，避免直接硬截断。
         if [ "${#filtered_message}" -gt 800 ]; then
             filtered_message=$(condense_final_response "$filtered_message" 1200)
+            echo "[stop] $(date): Final assistant message condensed to length=${#filtered_message}" >> "$DEBUG_LOG"
         fi
 
         # 保存为记忆

@@ -99,6 +99,7 @@ fi
 LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
 if [ -f "$LOG_FILE" ]; then
     LINE_COUNT=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
+    echo "[post-tool-use] $(date): LOG_FILE=$LOG_FILE line_count=$LINE_COUNT" >> "$DEBUG_LOG"
 
     # 达到阈值时批量保存
     if [ "$LINE_COUNT" -ge 3 ]; then
@@ -114,6 +115,7 @@ if [ -f "$LOG_FILE" ]; then
         elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|create\|add"; then
             CATEGORY="decision"
         fi
+        echo "[post-tool-use] $(date): Derived CATEGORY=$CATEGORY from buffered tool log" >> "$DEBUG_LOG"
 
         # 捕获记忆
         echo "$CONTENT" | "$CLI" capture \
@@ -126,6 +128,7 @@ if [ -f "$LOG_FILE" ]; then
 
         # 清空日志
         > "$LOG_FILE"
+        echo "[post-tool-use] $(date): Buffered log cleared after capture" >> "$DEBUG_LOG"
     fi
 fi
 

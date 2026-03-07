@@ -47,6 +47,12 @@ else
     exit 1
 fi
 
+PROJECT_ROOT="$PROJECT_PATH"
+if command -v resolve_project_root &> /dev/null; then
+    PROJECT_ROOT=$(resolve_project_root "$PROJECT_PATH")
+fi
+echo "[session-end] $(date): PROJECT_ROOT=$PROJECT_ROOT" >> "$DEBUG_LOG"
+
 # 结束会话记录
 end_session "$SESSION_ID" "$MESSAGE_COUNT" "$SESSION_SUMMARY"
 echo "[session-end] $(date): Updated session record" >> "$DEBUG_LOG"
@@ -59,7 +65,7 @@ if [ -f "$CLI" ]; then
 
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         CONTENT=$(cat "$LOG_FILE")
-        echo "[session-end] $(date): LOG_FILE content exists, capturing..." >> "$DEBUG_LOG"
+        echo "[session-end] $(date): LOG_FILE content exists, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#CONTENT}" >> "$DEBUG_LOG"
 
         if [ -n "$CONTENT" ]; then
             if should_condense_operation_log "$CONTENT"; then
@@ -76,6 +82,7 @@ if [ -f "$CLI" ]; then
             elif echo "$CONTENT" | grep -qi "decision\|choose\|select\|create\|add"; then
                 CATEGORY="decision"
             fi
+            echo "[session-end] $(date): Derived CATEGORY=$CATEGORY for session-end capture" >> "$DEBUG_LOG"
 
             # 捕获记忆
             echo "$CONTENT" | "$CLI" capture \
@@ -89,6 +96,7 @@ if [ -f "$CLI" ]; then
 
             # 清空日志
             > "$LOG_FILE"
+            echo "[session-end] $(date): Buffered log cleared after session-end capture" >> "$DEBUG_LOG"
 
             echo "[CC-Mem] 已保存会话记忆：$SESSION_ID"
             echo "[session-end] $(date): Memory saved" >> "$DEBUG_LOG"

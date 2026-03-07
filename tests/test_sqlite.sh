@@ -335,24 +335,68 @@ test_store_memory_classification_snapshot_fields() {
     assert_contains "$result" "rule-v1" "应该记录 classification_version"
 }
 
-it "应该回填旧记录的分层元数据"
+it "迁移脚本应该升级旧库并回填元数据"
 test_backfill_legacy_metadata_fields() {
-    sqlite3 "$TEST_DB" <<'EOF'
+    local legacy_dir
+    local legacy_db
+    local migrate_script
+    local result
+    local columns
+    local epoch
+
+    legacy_dir=$(create_test_dir "cc-mem-legacy-db")
+    legacy_db="$legacy_dir/legacy-memory.db"
+    migrate_script="$SCRIPT_DIR/scripts/migrate-legacy-db.sh"
+
+    sqlite3 "$legacy_db" <<'EOF'
+CREATE TABLE memories (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp_epoch INTEGER,
+    project_path TEXT,
+    category TEXT,
+    content TEXT NOT NULL,
+    content_preview TEXT,
+    summary TEXT,
+    tags TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    end_time DATETIME,
+    project_path TEXT,
+    message_count INTEGER DEFAULT 0,
+    summary TEXT,
+    status TEXT DEFAULT 'active'
+);
+
 INSERT INTO memories (
-    id, session_id, project_path, project_root, category, source, memory_kind,
-    auto_inject_policy, expires_at, content, content_preview, summary, tags,
-    concepts, timestamp_epoch, content_hash
+    id, session_id, timestamp, timestamp_epoch, project_path, category,
+    content, content_preview, summary, tags, created_at, updated_at
 )
 VALUES (
-    'mem_legacy_backfill', 'legacy_session', '/legacy/project', '', 'context', '', '', '',
-    NULL, '旧 stop 记录', '旧 stop 记录', '旧 stop 摘要', 'stop,auto-captured', 'what-changed',
-    100, 'legacyhash000001'
+    'mem_legacy_backfill', 'legacy_session', '2026-03-07 07:39:35', NULL, '/legacy/project', 'context',
+    '旧 stop 记录', '旧 stop 记录', '旧 stop 摘要', 'stop,auto-captured',
+    '2026-03-07 07:39:35', '2026-03-07 07:39:35'
 );
+
+INSERT INTO sessions (id, project_path, status)
+VALUES ('legacy_session', '/legacy/project', 'active');
 EOF
 
-    ensure_schema_columns
+    MEMORY_DB="$legacy_db" bash "$migrate_script" --no-backup >/dev/null
 
-    local result=$(sqlite3 "$TEST_DB" "SELECT source, memory_kind, auto_inject_policy, project_root, expires_at FROM memories WHERE id='mem_legacy_backfill';")
+    columns=$(sqlite3 "$legacy_db" "PRAGMA table_info(memories);")
+    assert_not_contains "$columns" "|timestamp|" "迁移后 memories 表不应再保留旧 timestamp 列"
+
+    epoch=$(sqlite3 "$legacy_db" "SELECT timestamp_epoch FROM memories WHERE id='mem_legacy_backfill';")
+    assert_true "[[ -n \"$epoch\" && \"$epoch\" -gt 0 ]]" "迁移后应该回填 timestamp_epoch"
+
+    result=$(sqlite3 "$legacy_db" "SELECT source, memory_kind, auto_inject_policy, project_root, expires_at FROM memories WHERE id='mem_legacy_backfill';")
     assert_contains "$result" "stop_summary" "旧 stop 标签应该回填为 stop_summary"
     assert_contains "$result" "working" "stop_summary 应该映射为 working"
     assert_contains "$result" "conditional" "stop_summary 应该默认 conditional 注入"

@@ -38,7 +38,7 @@ with open(path) as f:
 data["memory_db"] = "$TEST_DB"
 data["failed_queue_dir"] = "$TEST_DB_DIR/failed_queue"
 data["debug_log"] = "$TEST_DB_DIR/debug.log"
-data["memory"]["markdown_export_path"] = "$TEST_DB_DIR/exports"
+data["markdown_export_path"] = "$TEST_DB_DIR/exports"
 with open(path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")

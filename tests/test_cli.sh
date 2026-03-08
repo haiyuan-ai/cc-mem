@@ -399,6 +399,30 @@ test_export_creates_markdown_files() {
     assert_true "[ $file_count -gt 0 ]" "应该创建 Markdown 文件"
 }
 
+it "export 默认目录应从顶层 markdown_export_path 读取"
+test_export_reads_top_level_markdown_export_path() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local export_dir="$TEST_DB_DIR/top-level-exports"
+    mkdir -p "$export_dir"
+
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["markdown_export_path"] = "$export_dir"
+data.pop("memory", None)
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+
+    local result
+    result=$("$CLI" export 2>&1)
+
+    assert_contains "$result" "导出记忆到：$export_dir" "默认导出目录应来自顶层 markdown_export_path"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：projects 命令
 # ═══════════════════════════════════════════════════════════

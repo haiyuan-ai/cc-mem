@@ -605,9 +605,7 @@ done < notes.txt
     "recall_limit": 3,
     "related_project_limit": 1
   },
-  "memory": {
-    "markdown_export_path": "~/cc-mem-export"
-  }
+  "markdown_export_path": "~/cc-mem-export"
 }
 ```
 
@@ -622,6 +620,7 @@ done < notes.txt
 - `injection.session_start_limit`
 - `injection.recall_limit`
 - `injection.related_project_limit`
+- `markdown_export_path`
 
 ## 数据库结构
 

@@ -16,9 +16,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
+source "$LIB_DIR/config.sh"
 
 # 默认配置
-MEMORY_DB="${MEMORY_DB:-$HOME/.claude/cc-mem/memory.db}"
+DB_PATH="$(get_memory_db_path)"
 DO_BACKUP=true
 FORCE_REPAIR=false
 DRY_RUN=false
@@ -26,7 +27,7 @@ DRY_RUN=false
 # 解析命令行参数
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --db) MEMORY_DB="$2"; shift ;;
+        --db) DB_PATH="$2"; shift ;;
         --backup) DO_BACKUP=true ;;
         --no-backup) DO_BACKUP=false ;;
         --force) FORCE_REPAIR=true ;;
@@ -152,8 +153,8 @@ EOF
 # 主程序
 main() {
     # 检查数据库文件是否存在
-    if [ ! -f "$MEMORY_DB" ]; then
-        echo "错误：数据库文件不存在：$MEMORY_DB"
+    if [ ! -f "$DB_PATH" ]; then
+        echo "错误：数据库文件不存在：$DB_PATH"
         echo "请先运行 'ccmem-cli.sh init' 初始化数据库"
         exit 1
     fi
@@ -163,7 +164,7 @@ main() {
 
     # 检查 FTS 状态
     echo "检查 FTS 状态..."
-    if check_fts_status "$MEMORY_DB"; then
+    if check_fts_status "$DB_PATH"; then
         echo "FTS 状态：正常"
         if [ "$FORCE_REPAIR" = false ]; then
             echo "无需修复，退出。"
@@ -180,7 +181,7 @@ main() {
     echo ""
 
     # 执行修复
-    repair_fts "$MEMORY_DB"
+    repair_fts "$DB_PATH"
     exit $?
 }
 

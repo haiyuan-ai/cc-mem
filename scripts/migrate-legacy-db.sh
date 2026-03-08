@@ -17,7 +17,7 @@ source "$LIB_DIR/sqlite.sh"
 
 DO_BACKUP=true
 SELF_TEST=false
-MEMORY_DB="${MEMORY_DB:-$HOME/.claude/cc-mem/memory.db}"
+DB_PATH="$(get_memory_db_path)"
 
 show_help() {
     cat <<EOF
@@ -27,7 +27,7 @@ CC-Mem 一次性旧库迁移脚本
   $0 [选项]
 
 选项：
-  --db <path>      指定数据库路径（默认：\$HOME/.claude/cc-mem/memory.db）
+  --db <path>      指定数据库路径（默认读取 config/config.json）
   --no-backup      不备份数据库
   --self-test      运行脚本自检
   -h, --help       显示帮助
@@ -41,7 +41,7 @@ EOF
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --db)
-            MEMORY_DB="$2"
+            DB_PATH="$2"
             shift
             ;;
         --no-backup)
@@ -68,9 +68,9 @@ ensure_column_exists() {
     local column_def="$3"
     local exists
 
-    exists=$(sqlite3 "$MEMORY_DB" "PRAGMA table_info($table_name);" | awk -F'|' -v col="$column_name" '$2 == col { print 1 }')
+    exists=$(sqlite3 "$DB_PATH" "PRAGMA table_info($table_name);" | awk -F'|' -v col="$column_name" '$2 == col { print 1 }')
     if [ -z "$exists" ]; then
-        sqlite3 "$MEMORY_DB" "ALTER TABLE $table_name ADD COLUMN $column_def;"
+        sqlite3 "$DB_PATH" "ALTER TABLE $table_name ADD COLUMN $column_def;"
     fi
 }
 
@@ -80,13 +80,13 @@ backfill_project_roots() {
     local path_escaped=""
     local root_escaped=""
 
-    sqlite3 -noheader "$MEMORY_DB" "SELECT DISTINCT project_path FROM memories WHERE project_path IS NOT NULL AND project_path != '' UNION SELECT DISTINCT project_path FROM sessions WHERE project_path IS NOT NULL AND project_path != '';" | while IFS= read -r path; do
+    sqlite3 -noheader "$DB_PATH" "SELECT DISTINCT project_path FROM memories WHERE project_path IS NOT NULL AND project_path != '' UNION SELECT DISTINCT project_path FROM sessions WHERE project_path IS NOT NULL AND project_path != '';" | while IFS= read -r path; do
         [ -z "$path" ] && continue
         root=$(resolve_project_root "$path")
         path_escaped=$(sql_escape "$path")
         root_escaped=$(sql_escape "$root")
 
-        sqlite3 "$MEMORY_DB" <<EOF
+        sqlite3 "$DB_PATH" <<EOF
 UPDATE memories
 SET project_root = '$root_escaped'
 WHERE project_path = '$path_escaped' AND (project_root IS NULL OR project_root = '' OR project_root = project_path);
@@ -99,7 +99,7 @@ EOF
 }
 
 backfill_memory_metadata() {
-    sqlite3 "$MEMORY_DB" <<'EOF'
+    sqlite3 "$DB_PATH" <<'EOF'
 UPDATE memories
 SET source = CASE
     WHEN source IS NOT NULL AND source != '' AND source != 'manual' THEN source
@@ -140,10 +140,10 @@ EOF
 
 migrate_memories_table_to_epoch_only() {
     local has_timestamp_column=""
-    has_timestamp_column=$(sqlite3 "$MEMORY_DB" "PRAGMA table_info(memories);" | awk -F'|' '$2 == "timestamp" { print 1 }')
+    has_timestamp_column=$(sqlite3 "$DB_PATH" "PRAGMA table_info(memories);" | awk -F'|' '$2 == "timestamp" { print 1 }')
     [ -z "$has_timestamp_column" ] && return 0
 
-    sqlite3 "$MEMORY_DB" <<'EOF'
+    sqlite3 "$DB_PATH" <<'EOF'
 UPDATE memories
 SET timestamp_epoch = COALESCE(
     NULLIF(timestamp_epoch, 0),
@@ -200,21 +200,21 @@ EOF
 }
 
 main() {
-    if [ ! -f "$MEMORY_DB" ]; then
-        echo "错误：数据库文件不存在：$MEMORY_DB" >&2
+    if [ ! -f "$DB_PATH" ]; then
+        echo "错误：数据库文件不存在：$DB_PATH" >&2
         exit 1
     fi
 
     local has_memories=""
-    has_memories=$(sqlite3 "$MEMORY_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='memories';" 2>/dev/null || true)
+    has_memories=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='memories';" 2>/dev/null || true)
     if [ "$has_memories" != "memories" ]; then
         echo "错误：数据库中不存在 memories 表，无法迁移旧库" >&2
         exit 1
     fi
 
     if [ "$DO_BACKUP" = true ]; then
-        local backup="${MEMORY_DB}.backup.$(date +%Y%m%d_%H%M%S)"
-        cp "$MEMORY_DB" "$backup"
+        local backup="${DB_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$DB_PATH" "$backup"
         echo "已备份数据库到：$backup"
     fi
 
@@ -234,7 +234,7 @@ main() {
 
     migrate_memories_table_to_epoch_only
 
-    sqlite3 "$MEMORY_DB" <<'EOF'
+    sqlite3 "$DB_PATH" <<'EOF'
 CREATE INDEX IF NOT EXISTS idx_sessions_project_root ON sessions(project_root);
 
 CREATE TABLE IF NOT EXISTS project_links (
@@ -294,7 +294,7 @@ EOF
     backfill_memory_metadata
     ensure_memories_runtime_objects
 
-    echo "旧库迁移完成：$MEMORY_DB"
+    echo "旧库迁移完成：$DB_PATH"
 }
 
 run_self_test() {
@@ -303,7 +303,7 @@ run_self_test() {
     local columns
     local result
     local epoch
-    local old_db="$MEMORY_DB"
+    local old_db="$DB_PATH"
     local old_backup="$DO_BACKUP"
 
     test_dir=$(mktemp -d /tmp/cc-mem-migrate-test.XXXXXX)
@@ -349,7 +349,7 @@ INSERT INTO sessions (id, project_path, status)
 VALUES ('legacy_session', '/legacy/project', 'active');
 EOF
 
-    MEMORY_DB="$test_db"
+    DB_PATH="$test_db"
     DO_BACKUP=false
     main
 
@@ -369,7 +369,7 @@ EOF
     sqlite3 "$test_db" "SELECT name FROM sqlite_master WHERE type='table' AND name='project_links';" | grep -q "project_links" \
         || { echo "SELF-TEST FAILED: 未创建 project_links 表" >&2; return 1; }
 
-    MEMORY_DB="$old_db"
+    DB_PATH="$old_db"
     DO_BACKUP="$old_backup"
     echo "SELF-TEST PASSED"
 }

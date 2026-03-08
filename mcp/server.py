@@ -169,7 +169,7 @@ def run_recall(project_path: str, query: str, limit: int) -> Dict[str, Any]:
         [
             "bash",
             "-lc",
-            'source "$1"; [ -f "$MEMORY_DB" ] || init_db >/dev/null 2>&1; generate_query_recall_context "$2" "$3" "$4"',
+            'source "$1"; [ -f "$CCMEM_MEMORY_DB" ] || init_db >/dev/null 2>&1; generate_query_recall_context "$2" "$3" "$4"',
             "ccmem-mcp",
             str(LIB_PATH),
             project_path,

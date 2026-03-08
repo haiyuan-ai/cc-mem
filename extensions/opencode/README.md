@@ -36,7 +36,7 @@ It does not yet implement:
 
 - `python3`
 - the `cc-mem` repo available locally
-- a working `cc-mem` database at the default location or via `MEMORY_DB`
+- a working `cc-mem` database configured via `config/config.json`
 - local extension dependencies installed via `bun install` or `npm install`
 
 The extension currently talks directly to:

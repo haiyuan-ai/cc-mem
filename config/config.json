@@ -20,7 +20,5 @@
     "recall_limit": 3,
     "related_project_limit": 1
   },
-  "memory": {
-    "markdown_export_path": "~/cc-mem-export"
-  }
+  "markdown_export_path": "~/cc-mem-export"
 }

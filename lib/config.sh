@@ -57,7 +57,7 @@ get_debug_log_path_runtime() {
 }
 
 get_markdown_export_path() {
-    config_get_path "memory.markdown_export_path" "$HOME/cc-mem-export"
+    config_get_path "markdown_export_path" "$HOME/cc-mem-export"
 }
 
 get_cleanup_throttle_seconds() {

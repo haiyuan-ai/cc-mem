@@ -15,6 +15,7 @@ CONFIG_DIR="$SCRIPT_DIR/config"
 
 source "$LIB_DIR/sqlite.sh"
 source "$LIB_DIR/content_utils.sh"
+source "$LIB_DIR/classification.sh"
 
 load_config() {
     export CCMEM_CONFIG_FILE="${CCMEM_CONFIG_FILE:-$CONFIG_DIR/config.json}"
@@ -194,6 +195,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   history           查看记忆历史
   list              列出最近的记忆
   export            导出记忆到 Markdown
+  retry             重试失败队列中的记忆写入
   inject-context    生成开场注入上下文
   projects          列出所有项目
   related-projects  列出关联项目
@@ -213,6 +215,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   ccmem-cli.sh capture -c "decision" -t "important,core"
   echo "重要模式" | ccmem-cli.sh capture -c "pattern" -t "react,hooks" -m "自定义摘要"
   ccmem-cli.sh export -o "~/exports"
+  ccmem-cli.sh retry --dry-run
   ccmem-cli.sh related-projects -p "/path/to/project"
   ccmem-cli.sh stats --days 7
 选项:
@@ -224,6 +227,8 @@ CC-Mem CLI - Claude Code 记忆管理工具
   -q, --query       检索关键词
   -o, --output      导出目录（默认：$HOME/cc-mem-export）
   -l, --limit       限制结果数量（默认：10）
+  --hook            仅处理指定 hook 的失败项
+  --dry-run         只显示将要处理的失败项，不执行写入
   -s, --session     会话 ID
   -h, --help        显示帮助
 
@@ -474,6 +479,248 @@ cmd_export() {
     export_to_markdown "$output_dir" "$project_path"
 
     echo "导出完成"
+}
+
+retry_map_hook_metadata() {
+    local hook_name="$1"
+
+    case "$hook_name" in
+        post-tool-use)
+            printf '%s|%s|%s\n' "post_tool_use" "auto-captured" "what-changed"
+            ;;
+        user-prompt-submit)
+            printf '%s|%s|%s\n' "user_prompt_submit" "auto-captured" "what-changed"
+            ;;
+        session-end)
+            printf '%s|%s|%s\n' "session_end" "auto-captured,session-end" "what-changed"
+            ;;
+        stop)
+            printf '%s|%s|%s\n' "stop_summary" "auto-captured,stop" "what-changed"
+            ;;
+        stop-final-response)
+            printf '%s|%s|%s\n' "stop_final_response" "final-response,stop" "what-changed"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+retry_read_metadata() {
+    local file_path="$1"
+    local key="$2"
+
+    awk -v target="$key" '
+        BEGIN { found = "" }
+        NR == 1 && $0 ~ /^# / {
+            line = substr($0, 3)
+            n = split(line, parts, " ")
+            for (i = 1; i <= n; i++) {
+                split(parts[i], pair, "=")
+                if (pair[1] == target) {
+                    print substr(parts[i], length(target) + 2)
+                    exit
+                }
+            }
+        }
+    ' "$file_path"
+}
+
+retry_read_content() {
+    local file_path="$1"
+
+    awk '
+        NR == 1 && $0 ~ /^# / { next }
+        { print }
+    ' "$file_path"
+}
+
+retry_process_file() {
+    local file_path="$1"
+    local hook_name=""
+    local session_id=""
+    local meta=""
+    local source=""
+    local tags=""
+    local concepts=""
+    local content=""
+    local filtered_content=""
+    local summary=""
+    local classification_result=""
+    local category=""
+    local confidence=""
+    local reason=""
+    local memory_kind=""
+    local auto_inject_policy=""
+    local store_result=""
+
+    hook_name=$(retry_read_metadata "$file_path" "hook")
+    session_id=$(retry_read_metadata "$file_path" "session_id")
+
+    if [ -z "$hook_name" ]; then
+        printf '%s\n' "skip:missing-hook"
+        return 0
+    fi
+
+    meta=$(retry_map_hook_metadata "$hook_name" || true)
+    if [ -z "$meta" ]; then
+        printf '%s\n' "skip:unsupported-hook"
+        return 0
+    fi
+
+    source=$(printf '%s' "$meta" | cut -d'|' -f1)
+    tags=$(printf '%s' "$meta" | cut -d'|' -f2)
+    concepts=$(printf '%s' "$meta" | cut -d'|' -f3)
+    content=$(retry_read_content "$file_path")
+    filtered_content=$(strip_injected_context_blocks "$content")
+
+    if [ -z "$(printf '%s' "$filtered_content" | tr -d '[:space:]')" ]; then
+        printf '%s\n' "fail:empty-content"
+        return 1
+    fi
+
+    summary=$(build_default_summary "$filtered_content")
+    classification_result=$(classify_memory "$source" "$summary" "$filtered_content" "$tags" "$concepts")
+    category=$(printf '%s' "$classification_result" | cut -d'|' -f1)
+    confidence=$(printf '%s' "$classification_result" | cut -d'|' -f2)
+    reason=$(printf '%s' "$classification_result" | cut -d'|' -f3-)
+    memory_kind=$(infer_memory_kind "$source" "$category" "$confidence")
+    auto_inject_policy=$(infer_auto_inject_policy "$source" "$category" "$confidence")
+
+    if [ -z "$session_id" ]; then
+        session_id="retry_$$"
+    fi
+
+    store_result=$(store_memory \
+        "$session_id" \
+        "" \
+        "$category" \
+        "$filtered_content" \
+        "$summary" \
+        "$tags" \
+        "$concepts" \
+        "$source" \
+        "$memory_kind" \
+        "$auto_inject_policy" \
+        "" \
+        "" \
+        "$confidence" \
+        "$reason" \
+        "rule" \
+        "rule-v2")
+
+    case "$store_result" in
+        duplicate:*)
+            rm -f "$file_path"
+            printf '%s\n' "duplicate:${store_result#duplicate:}"
+            ;;
+        error:*)
+            printf '%s\n' "fail:${store_result#error:}"
+            return 1
+            ;;
+        *)
+            rm -f "$file_path"
+            printf '%s\n' "success:$store_result"
+            ;;
+    esac
+}
+
+cmd_retry() {
+    local queue_dir=""
+    local dry_run=false
+    local limit=""
+    local hook_filter=""
+    local files=()
+    local file_path=""
+    local scanned=0
+    local matched=0
+    local recovered=0
+    local duplicates=0
+    local failed=0
+    local skipped=0
+    local result=""
+    local hook_name=""
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --dry-run) dry_run=true ;;
+            --limit) limit="$2"; shift ;;
+            --hook) hook_filter="$2"; shift ;;
+            -h|--help)
+                print_command_usage "retry [--dry-run] [--limit count] [--hook name]"
+                echo "重试失败队列中的记忆写入。"
+                return
+                ;;
+            *) print_unknown_option "$1"; return 1 ;;
+        esac
+        shift
+    done
+
+    queue_dir=$(get_failed_capture_queue_dir)
+    if [ ! -d "$queue_dir" ]; then
+        echo "失败队列为空"
+        return 0
+    fi
+
+    while IFS= read -r file_path; do
+        [ -n "$file_path" ] && files+=("$file_path")
+    done < <(find "$queue_dir" -type f -name 'failed_*' | sort)
+
+    if [ "${#files[@]}" -eq 0 ]; then
+        echo "失败队列为空"
+        return 0
+    fi
+
+    for file_path in "${files[@]}"; do
+        scanned=$((scanned + 1))
+        hook_name=$(retry_read_metadata "$file_path" "hook")
+        if [ -n "$hook_filter" ] && [ "$hook_name" != "$hook_filter" ]; then
+            continue
+        fi
+        matched=$((matched + 1))
+        if [ -n "$limit" ] && [ "$matched" -gt "$limit" ]; then
+            matched=$((matched - 1))
+            break
+        fi
+
+        if [ "$dry_run" = true ]; then
+            echo "将处理：$(basename "$file_path") hook=${hook_name:-unknown}"
+            continue
+        fi
+
+        result=$(retry_process_file "$file_path" || true)
+        case "$result" in
+            success:*)
+                recovered=$((recovered + 1))
+                ;;
+            duplicate:*)
+                duplicates=$((duplicates + 1))
+                ;;
+            skip:*)
+                skipped=$((skipped + 1))
+                ;;
+            fail:*)
+                failed=$((failed + 1))
+                echo "重试失败：$(basename "$file_path") ${result#fail:}"
+                ;;
+            *)
+                failed=$((failed + 1))
+                echo "重试失败：$(basename "$file_path") unknown"
+                ;;
+        esac
+    done
+
+    if [ "$dry_run" = true ]; then
+        echo "将处理失败项：$matched"
+        return 0
+    fi
+
+    echo "扫描失败项：$scanned"
+    echo "匹配处理：$matched"
+    echo "成功恢复：$recovered"
+    echo "重复跳过：$duplicates"
+    echo "跳过：$skipped"
+    echo "恢复失败：$failed"
 }
 
 cmd_cleanup() {
@@ -977,6 +1224,9 @@ main() {
             ;;
         export)
             cmd_export "$@"
+            ;;
+        retry)
+            cmd_retry "$@"
             ;;
         projects)
             cmd_projects

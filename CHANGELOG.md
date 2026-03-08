@@ -42,6 +42,7 @@
   - `temporary` 优先提取 `[FILE_CHANGE]` / `[BASH]` / error / fix 等关键签名
 - 机会式 cleanup 从“纯时间节流”升级为“时间节流 + 当前项目近期增长速率绕过”，在当前项目短时间内记忆增长过快时可提前执行安全清理
 - 新增 `ccmem-cli.sh stats`，提供最近 N 天的记忆数量、分层分布与 Preview 压缩占比统计
+- 新增 `ccmem-cli.sh retry`，用于重试本地失败队列中的记忆写入
 - `user_prompt_submit` 新增可复用性判断，只对可复用的偏好、约束、规则、决策额外落库
 - `post_tool_use` / `stop_summary` 新增来源侧规则，优先提炼错误、修复、验证、变更和决策信号
 

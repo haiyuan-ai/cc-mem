@@ -424,6 +424,138 @@ PY
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：retry 命令
+# ═══════════════════════════════════════════════════════════
+
+describe "retry 命令"
+
+it "应该恢复失败队列中的记忆并删除队列文件"
+test_retry_recovers_failed_capture() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local queue_dir="$TEST_DB_DIR/retry-queue"
+    local payload="[FILE_CHANGE] updated lib/retry.sh: fix retry parsing"
+    mkdir -p "$queue_dir"
+
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["failed_queue_dir"] = "$queue_dir"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+
+    cat > "$queue_dir/failed_post-tool-use_test_001.log" <<'EOF'
+# hook=post-tool-use session_id=test_retry reason=capture_failed queued_at=2026-03-08T00:00:00Z
+[FILE_CHANGE] updated lib/retry.sh: fix retry parsing
+EOF
+
+    local result
+    result=$("$CLI" retry 2>&1)
+
+    assert_contains "$result" "成功恢复：1" "应该恢复 1 条失败记忆"
+    assert_equals "0" "$(find "$queue_dir" -type f | wc -l | tr -d ' ')" "成功恢复后应删除队列文件"
+    assert_equals "1" "$(db_query "SELECT COUNT(*) FROM memories WHERE source = 'post_tool_use' AND content = '$payload';")" "应写入恢复后的记忆"
+}
+
+it "duplicate 应视为成功并删除队列文件"
+test_retry_treats_duplicate_as_success() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local queue_dir="$TEST_DB_DIR/retry-duplicate-queue"
+    local payload="[FILE_CHANGE] updated lib/retry.sh: fix duplicate handling"
+    mkdir -p "$queue_dir"
+
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["failed_queue_dir"] = "$queue_dir"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+
+    store_memory "dup_retry" "/tmp/retry-project" "solution" "$payload" "duplicate summary" "auto-captured" "what-changed" "post_tool_use" "working" "conditional" "/tmp/retry-project" > /dev/null
+
+    cat > "$queue_dir/failed_post-tool-use_test_002.log" <<EOF
+# hook=post-tool-use session_id=test_retry reason=capture_failed queued_at=2026-03-08T00:00:00Z
+$payload
+EOF
+
+    local result
+    result=$("$CLI" retry 2>&1)
+
+    assert_contains "$result" "重复跳过：1" "duplicate 应计入重复跳过"
+    assert_equals "0" "$(find "$queue_dir" -type f | wc -l | tr -d ' ')" "duplicate 也应删除队列文件"
+}
+
+it "--dry-run 不应删除队列文件"
+test_retry_dry_run_keeps_files() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local queue_dir="$TEST_DB_DIR/retry-dry-run-queue"
+    mkdir -p "$queue_dir"
+
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["failed_queue_dir"] = "$queue_dir"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+
+    cat > "$queue_dir/failed_stop_test_003.log" <<'EOF'
+# hook=stop session_id=test_retry reason=capture_failed queued_at=2026-03-08T00:00:00Z
+[FILE_CHANGE] updated hooks/stop.sh: improve summary
+EOF
+
+    local result
+    result=$("$CLI" retry --dry-run 2>&1)
+
+    assert_contains "$result" "将处理失败项：1" "dry-run 应显示将处理数量"
+    assert_equals "1" "$(find "$queue_dir" -type f | wc -l | tr -d ' ')" "dry-run 不应删除队列文件"
+}
+
+it "--hook 应只处理匹配的失败项"
+test_retry_filters_by_hook() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local queue_dir="$TEST_DB_DIR/retry-hook-queue"
+    mkdir -p "$queue_dir"
+
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["failed_queue_dir"] = "$queue_dir"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+
+    cat > "$queue_dir/failed_stop_test_004.log" <<'EOF'
+# hook=stop session_id=test_retry reason=capture_failed queued_at=2026-03-08T00:00:00Z
+[FILE_CHANGE] updated hooks/stop.sh: recover stop queue
+EOF
+
+    cat > "$queue_dir/failed_session-end_test_005.log" <<'EOF'
+# hook=session-end session_id=test_retry reason=capture_failed queued_at=2026-03-08T00:00:00Z
+[FILE_CHANGE] updated hooks/session-end.sh: keep original log
+EOF
+
+    local result
+    result=$("$CLI" retry --hook stop 2>&1)
+
+    assert_contains "$result" "匹配处理：1" "应只处理匹配 hook 的失败项"
+    assert_equals "1" "$(find "$queue_dir" -type f | wc -l | tr -d ' ')" "未匹配的队列文件应保留"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 测试：projects 命令
 # ═══════════════════════════════════════════════════════════
 

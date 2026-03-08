@@ -229,6 +229,9 @@ ccmem-cli.sh status
 # 查看最近统计
 ccmem-cli.sh stats --days 7
 
+# 重试失败队列
+ccmem-cli.sh retry
+
 # 捕获记忆
 echo "重要内容" | ccmem-cli.sh capture -c "decision" -t "tag1,tag2"
 
@@ -344,6 +347,23 @@ ccmem-cli.sh export -p "/path/to/project" -o ~/exports
 ```
 
 **导出格式**：标准 Markdown 文件，可用任何 Markdown 编辑器打开（VS Code, Typora, Obsidian 等）
+
+#### retry - 重试失败队列
+
+```bash
+# 重试所有失败项
+ccmem-cli.sh retry
+
+# 仅预览将处理的失败项
+ccmem-cli.sh retry --dry-run
+
+# 只处理某类 hook 的失败项
+ccmem-cli.sh retry --hook stop
+```
+
+适用场景：
+- hooks 写库失败后，补写本地失败队列中的记忆
+- duplicate 会视为已恢复并自动移除队列文件
 
 #### timeline - 获取时间线上下文
 

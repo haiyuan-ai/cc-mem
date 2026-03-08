@@ -198,7 +198,7 @@ EOF
             echo "[stop] $(date): Memory saved from operation log" >> "$CCMEM_DEBUG_LOG"
         else
             local queued_path=""
-            queued_path=$(queue_failed_capture_log "stop" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+            queued_path=$(queue_failed_capture_log "stop" "$SESSION_ID" "$LOG_FILE" "capture_failed" "$PROJECT_PATH" "$PROJECT_ROOT" || true)
             if [ -n "$queued_path" ]; then
                 echo "[stop] $(date): Capture failed, buffered log moved to queue: $queued_path" >> "$CCMEM_DEBUG_LOG"
             else
@@ -238,7 +238,7 @@ EOF
             echo "[stop] $(date): Saved final assistant message as memory" >> "$CCMEM_DEBUG_LOG"
         else
             local final_response_queue=""
-            final_response_queue=$(queue_failed_capture_log "stop-final-response" "$SESSION_ID" "$final_response_log" "capture_failed" || true)
+            final_response_queue=$(queue_failed_capture_log "stop-final-response" "$SESSION_ID" "$final_response_log" "capture_failed" "$PROJECT_PATH" "$PROJECT_ROOT" || true)
             if [ -n "$final_response_queue" ]; then
                 echo "[stop] $(date): Final response capture failed, queued at: $final_response_queue" >> "$CCMEM_DEBUG_LOG"
             else

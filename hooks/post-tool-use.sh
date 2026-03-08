@@ -120,7 +120,7 @@ if [ -f "$LOG_FILE" ]; then
             hook_log "post-tool-use" "Buffered log cleared after capture"
         else
             queued_path=""
-            queued_path=$(queue_failed_capture_log "post-tool-use" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+            queued_path=$(queue_failed_capture_log "post-tool-use" "$SESSION_ID" "$LOG_FILE" "capture_failed" "$PROJECT_PATH" "$(resolve_hook_project_root "post-tool-use" "$PROJECT_PATH")" || true)
             if [ -n "$queued_path" ]; then
                 hook_log "post-tool-use" "Capture failed, buffered log moved to queue: $queued_path"
             else

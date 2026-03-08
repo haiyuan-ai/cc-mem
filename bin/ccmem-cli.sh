@@ -489,8 +489,8 @@ cmd_export() {
 
     echo "导出记忆到：$output_dir"
 
-    # 使用简单 Markdown 导出（不需要 Obsidian）
-    export_to_markdown "$output_dir" "$project_path"
+    # 使用安全 Markdown 导出，避免分隔符污染正文
+    export_to_markdown_safe "$output_dir" "$project_path"
 
     echo "导出完成"
 }
@@ -525,8 +525,7 @@ retry_read_metadata() {
     local key="$2"
 
     awk -v target="$key" '
-        BEGIN { found = "" }
-        NR == 1 && $0 ~ /^# / {
+        /^# / {
             line = substr($0, 3)
             n = split(line, parts, " ")
             for (i = 1; i <= n; i++) {
@@ -536,7 +535,9 @@ retry_read_metadata() {
                     exit
                 }
             }
+            next
         }
+        { exit }
     ' "$file_path"
 }
 
@@ -544,9 +545,91 @@ retry_read_content() {
     local file_path="$1"
 
     awk '
-        NR == 1 && $0 ~ /^# / { next }
-        { print }
+        header = 1
+        header && /^# [A-Za-z0-9_]+=.*$/ { next }
+        { header = 0; print }
     ' "$file_path"
+}
+
+retry_decode_metadata_value() {
+    local value="$1"
+
+    if [ -z "$value" ]; then
+        return
+    fi
+
+    if command -v base64 >/dev/null 2>&1; then
+        if printf '%s' "$value" | base64 --decode >/dev/null 2>&1; then
+            printf '%s' "$value" | base64 --decode
+            return
+        fi
+        if printf '%s' "$value" | base64 -d >/dev/null 2>&1; then
+            printf '%s' "$value" | base64 -d
+            return
+        fi
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - <<PY 2>/dev/null || printf '%s' "$value"
+import base64
+print(base64.b64decode("""$value""").decode("utf-8"), end="")
+PY
+        return
+    fi
+
+    printf '%s' "$value"
+}
+
+export_to_markdown_safe() {
+    local output_dir="$1"
+    local project_path="$2"
+    local where_clause="WHERE 1=1"
+    local project_path_escaped=""
+    local memory_id=""
+    local memory_id_escaped=""
+    local timestamp=""
+    local category=""
+    local summary=""
+    local tags=""
+    local content=""
+    local safe_timestamp=""
+    local filename=""
+
+    mkdir -p "$output_dir"
+
+    if [ -n "$project_path" ]; then
+        project_path_escaped=$(sql_escape "$project_path")
+        where_clause="$where_clause AND project_path = '$project_path_escaped'"
+    fi
+
+    while IFS= read -r memory_id; do
+        [ -z "$memory_id" ] && continue
+        memory_id_escaped=$(sql_escape "$memory_id")
+        timestamp=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT $(memory_display_timestamp_sql) FROM memories WHERE id = '$memory_id_escaped';")
+        category=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(category, '') FROM memories WHERE id = '$memory_id_escaped';")
+        summary=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(summary, '') FROM memories WHERE id = '$memory_id_escaped';")
+        tags=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(tags, '') FROM memories WHERE id = '$memory_id_escaped';")
+        content=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(content, '') FROM memories WHERE id = '$memory_id_escaped';")
+
+        [ -z "$timestamp" ] && continue
+        safe_timestamp="${timestamp//:/-}"
+        safe_timestamp="${safe_timestamp// /_}"
+        filename="$output_dir/${safe_timestamp}_${memory_id}.md"
+
+        cat > "$filename" <<MDEOF
+---
+id: $memory_id
+timestamp: $timestamp
+category: $category
+tags: $tags
+project: $project_path
+---
+
+# $summary
+
+$content
+MDEOF
+    done < <(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT id FROM memories $where_clause AND id GLOB 'mem_*' ORDER BY timestamp_epoch DESC;")
 }
 
 retry_process_file() {
@@ -566,10 +649,14 @@ retry_process_file() {
     local reason=""
     local memory_kind=""
     local auto_inject_policy=""
+    local project_path=""
+    local project_root=""
     local store_result=""
 
     hook_name=$(retry_read_metadata "$file_path" "hook")
     session_id=$(retry_read_metadata "$file_path" "session_id")
+    project_path=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "project_path_b64")")
+    project_root=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "project_root_b64")")
 
     if [ -z "$hook_name" ]; then
         printf '%s\n' "skip:missing-hook"
@@ -607,7 +694,7 @@ retry_process_file() {
 
     store_result=$(store_memory \
         "$session_id" \
-        "" \
+        "$project_path" \
         "$category" \
         "$filtered_content" \
         "$summary" \
@@ -616,7 +703,7 @@ retry_process_file() {
         "$source" \
         "$memory_kind" \
         "$auto_inject_policy" \
-        "" \
+        "$project_root" \
         "" \
         "$confidence" \
         "$reason" \

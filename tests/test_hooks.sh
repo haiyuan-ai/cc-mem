@@ -452,6 +452,32 @@ test_user_prompt_submit_saves_reusable_prompt() {
     cleanup_hooks_test
 }
 
+it "可复用用户 prompt capture 失败时应入队"
+test_user_prompt_submit_queues_reusable_prompt_on_capture_failure() {
+    setup_hooks_test
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_prompt_reusable_queue")
+
+    local input
+    input=$(make_hook_input "$test_dir" "\"prompt\": \"不要单独引入 queue-status，统一放进 status 中扩展\"")
+    set_hooks_runtime_config "/tmp" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+    echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+
+    local queued_file
+    queued_file=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_user-prompt-submit_*" 2>/dev/null | head -1)
+    assert_file_exists "$queued_file" "可复用 prompt capture 失败时应写入失败队列"
+
+    local queued_content
+    queued_content=$(cat "$queued_file" 2>/dev/null || true)
+    assert_contains "$queued_content" "reusable_prompt_capture_failed" "队列文件应记录可复用 prompt 的失败原因"
+    assert_contains "$queued_content" "queue-status" "队列文件应保留原始 prompt 内容"
+    assert_contains "$queued_content" "project_path_b64=" "队列文件应记录项目路径元数据"
+
+    rm -rf "$test_dir"
+    cleanup_hooks_test
+}
+
 it "一次性用户 prompt 不应单独保存为记忆"
 test_user_prompt_submit_skips_ephemeral_prompt() {
     setup_hooks_test

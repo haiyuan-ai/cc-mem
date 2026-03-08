@@ -426,6 +426,27 @@ PY
     assert_contains "$result" "导出记忆到：$export_dir" "默认导出目录应来自顶层 markdown_export_path"
 }
 
+it "export 应保留包含竖线的摘要和正文"
+test_export_handles_pipe_characters() {
+    local export_dir="$TEST_DB_DIR/export-pipe"
+    local content="正文包含管道 a | b"
+    local summary="摘要包含 | 管道"
+    mkdir -p "$export_dir"
+
+    store_memory "export_pipe" "/tmp/export-pipe-project" "pattern" "$content" "$summary" "tag|pipe" "" "manual" "durable" "always" "/tmp/export-pipe-project" > /dev/null
+
+    "$CLI" export -o "$export_dir" > /dev/null 2>&1
+
+    local exported_file
+    exported_file=$(find "$export_dir" -type f -name '*.md' | head -1)
+    assert_file_exists "$exported_file" "应该生成导出文件"
+
+    local exported_content
+    exported_content=$(cat "$exported_file")
+    assert_contains "$exported_content" "$summary" "导出应保留包含竖线的摘要"
+    assert_contains "$exported_content" "$content" "导出应保留包含竖线的正文"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：retry 命令
 # ═══════════════════════════════════════════════════════════
@@ -452,6 +473,8 @@ PY
 
     cat > "$queue_dir/failed_post-tool-use_test_001.log" <<'EOF'
 # hook=post-tool-use session_id=test_retry reason=capture_failed queued_at=2026-03-08T00:00:00Z
+# project_path_b64=L3RtcC9yZXRyeS1wcm9qZWN0
+# project_root_b64=L3RtcC9yZXRyeS1wcm9qZWN0
 [FILE_CHANGE] updated lib/retry.sh: fix retry parsing
 EOF
 
@@ -461,6 +484,7 @@ EOF
     assert_contains "$result" "成功恢复：1" "应该恢复 1 条失败记忆"
     assert_equals "0" "$(find "$queue_dir" -type f | wc -l | tr -d ' ')" "成功恢复后应删除队列文件"
     assert_equals "1" "$(db_query "SELECT COUNT(*) FROM memories WHERE source = 'post_tool_use' AND content = '$payload';")" "应写入恢复后的记忆"
+    assert_equals "/tmp/retry-project|/tmp/retry-project" "$(db_query "SELECT project_path || '|' || project_root FROM memories WHERE source = 'post_tool_use' AND content = '$payload' LIMIT 1;")" "恢复后的记忆应保留原项目归属"
 }
 
 it "duplicate 应视为成功并删除队列文件"

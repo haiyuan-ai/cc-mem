@@ -140,17 +140,36 @@ get_failed_capture_queue_dir() {
     printf '%s\n' "${CCMEM_FAILED_QUEUE_DIR:-$(get_failed_queue_dir)}"
 }
 
+queue_encode_metadata_value() {
+    local value="$1"
+
+    if command -v base64 >/dev/null 2>&1; then
+        printf '%s' "$value" | base64 | tr -d '\n'
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - <<PY
+import base64
+print(base64.b64encode("""$value""".encode("utf-8")).decode("ascii"), end="")
+PY
+    else
+        printf '%s' "$value"
+    fi
+}
+
 queue_failed_capture_log() {
     local hook_name="$1"
     local session_id="$2"
     local log_file="$3"
     local reason="${4:-capture_failed}"
+    local project_path="${5:-}"
+    local project_root="${6:-}"
     local queue_dir=""
     local queued_path=""
     local safe_hook=""
     local safe_session=""
     local queued_at=""
     local unique_suffix=""
+    local project_path_b64=""
+    local project_root_b64=""
 
     if [ -z "$log_file" ] || [ ! -f "$log_file" ] || [ ! -s "$log_file" ]; then
         return 1
@@ -165,6 +184,12 @@ queue_failed_capture_log() {
     safe_hook=$(printf "%s" "$hook_name" | tr -c 'A-Za-z0-9_-' '_')
     safe_session=$(printf "%s" "${session_id:-unknown}" | tr -c 'A-Za-z0-9_-' '_')
     queued_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+    if [ -n "$project_path" ]; then
+        project_path_b64=$(queue_encode_metadata_value "$project_path")
+    fi
+    if [ -n "$project_root" ]; then
+        project_root_b64=$(queue_encode_metadata_value "$project_root")
+    fi
     queued_path=$(mktemp "$queue_dir/failed_${safe_hook}_${safe_session}_XXXXXX.log" 2>/dev/null || true)
     if [ -z "$queued_path" ]; then
         unique_suffix="$(date +%s 2>/dev/null || echo 0)_$$_${RANDOM:-0}"
@@ -173,6 +198,12 @@ queue_failed_capture_log() {
 
     {
         printf "# hook=%s session_id=%s reason=%s queued_at=%s\n" "$hook_name" "${session_id:-unknown}" "$reason" "$queued_at"
+        if [ -n "$project_path_b64" ]; then
+            printf "# project_path_b64=%s\n" "$project_path_b64"
+        fi
+        if [ -n "$project_root_b64" ]; then
+            printf "# project_root_b64=%s\n" "$project_root_b64"
+        fi
         cat "$log_file"
     } > "$queued_path" 2>/dev/null || {
         hook_log "$hook_name" "failed to persist queued log: $queued_path"
@@ -183,6 +214,37 @@ queue_failed_capture_log() {
     hook_log "$hook_name" "queued failed capture log to $queued_path"
     printf '%s\n' "$queued_path"
     return 0
+}
+
+queue_failed_capture_content() {
+    local hook_name="$1"
+    local session_id="$2"
+    local content="$3"
+    local reason="${4:-capture_failed}"
+    local project_path="${5:-}"
+    local project_root="${6:-}"
+    local temp_file=""
+    local result=""
+
+    if [ -z "$(printf '%s' "$content" | tr -d '[:space:]')" ]; then
+        return 1
+    fi
+
+    temp_file=$(mktemp "/tmp/ccmem_failed_content_${hook_name}_XXXXXX.log" 2>/dev/null || true)
+    if [ -z "$temp_file" ]; then
+        return 1
+    fi
+
+    printf '%s\n' "$content" > "$temp_file"
+    result=$(queue_failed_capture_log "$hook_name" "$session_id" "$temp_file" "$reason" "$project_path" "$project_root" || true)
+    rm -f "$temp_file"
+
+    if [ -n "$result" ]; then
+        printf '%s\n' "$result"
+        return 0
+    fi
+
+    return 1
 }
 
 build_reusable_prompt_summary() {

@@ -58,7 +58,13 @@ if [ -n "$USER_PROMPT" ]; then
                 >/dev/null 2>&1; then
                 hook_log "user-prompt-submit" "Reusable prompt saved"
             else
-                hook_log "user-prompt-submit" "Reusable prompt capture failed"
+                reusable_prompt_queue=""
+                reusable_prompt_queue=$(queue_failed_capture_content "user-prompt-submit" "$SESSION_ID" "$USER_PROMPT" "reusable_prompt_capture_failed" "$PROJECT_PATH" "$(resolve_hook_project_root "user-prompt-submit" "$PROJECT_PATH")" || true)
+                if [ -n "$reusable_prompt_queue" ]; then
+                    hook_log "user-prompt-submit" "Reusable prompt capture failed, queued at: $reusable_prompt_queue"
+                else
+                    hook_log "user-prompt-submit" "Reusable prompt capture failed and queue fallback failed"
+                fi
             fi
         else
             hook_log "user-prompt-submit" "Prompt ignored as non-reusable: category=$PROMPT_CATEGORY confidence=$PROMPT_CONFIDENCE"
@@ -106,7 +112,7 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         hook_log "user-prompt-submit" "Memory saved"
     else
         queued_path=""
-        queued_path=$(queue_failed_capture_log "user-prompt-submit" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+        queued_path=$(queue_failed_capture_log "user-prompt-submit" "$SESSION_ID" "$LOG_FILE" "capture_failed" "$PROJECT_PATH" "$(resolve_hook_project_root "user-prompt-submit" "$PROJECT_PATH")" || true)
         if [ -n "$queued_path" ]; then
             hook_log "user-prompt-submit" "Capture failed, buffered log moved to queue: $queued_path"
         else

@@ -78,7 +78,7 @@ if [ -f "$CLI" ]; then
                 hook_log "session-end" "Memory saved"
             else
                 queued_path=""
-                queued_path=$(queue_failed_capture_log "session-end" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+                queued_path=$(queue_failed_capture_log "session-end" "$SESSION_ID" "$LOG_FILE" "capture_failed" "$PROJECT_PATH" "$PROJECT_ROOT" || true)
                 if [ -n "$queued_path" ]; then
                     hook_log "session-end" "Capture failed, buffered log moved to queue: $queued_path"
                 else

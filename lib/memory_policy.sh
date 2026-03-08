@@ -238,16 +238,27 @@ cleanup_memories() {
 }
 
 count_recent_memories() {
-    local window_seconds="${1:-3600}"
+    local project_path="$1"
+    local window_seconds="${2:-3600}"
+    local where_clause=""
+    local project_root=""
+    local project_root_escaped=""
+
+    if [ -n "$project_path" ]; then
+        project_root=$(resolve_project_root "$project_path")
+        project_root_escaped=$(sql_escape "$project_root")
+        where_clause="project_root = '$project_root_escaped' AND "
+    fi
 
     sqlite3 "$MEMORY_DB" <<EOF
 SELECT COUNT(*)
 FROM memories
-WHERE timestamp_epoch >= CAST(strftime('%s', 'now') AS INTEGER) - $window_seconds;
+WHERE ${where_clause}timestamp_epoch >= CAST(strftime('%s', 'now') AS INTEGER) - $window_seconds;
 EOF
 }
 
 should_force_opportunistic_cleanup() {
+    local project_path="$1"
     local recent_threshold="${CCMEM_CLEANUP_GROWTH_THRESHOLD:-100}"
     local window_seconds="${CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS:-3600}"
     local recent_count=0
@@ -256,7 +267,7 @@ should_force_opportunistic_cleanup() {
         return 1
     fi
 
-    recent_count=$(count_recent_memories "$window_seconds" 2>/dev/null || echo "0")
+    recent_count=$(count_recent_memories "$project_path" "$window_seconds" 2>/dev/null || echo "0")
     [[ ! "$recent_count" =~ ^[0-9]+$ ]] && recent_count=0
 
     if [ "$recent_count" -ge "$recent_threshold" ]; then
@@ -298,6 +309,7 @@ run_opportunistic_cleanup() {
     local days="${2:-30}"
     local limit="${3:-50}"
     local throttle_seconds="${4:-43200}"
+    local project_path="$5"
     local state_file="${CCMEM_CLEANUP_STATE_FILE:-/tmp/ccmem_cleanup_state}"
     local deleted_count=""
     local now_ts=""
@@ -306,10 +318,10 @@ run_opportunistic_cleanup() {
     local cleanup_reason="schedule"
 
     if ! should_run_opportunistic_cleanup "$throttle_seconds"; then
-        if should_force_opportunistic_cleanup; then
+        if should_force_opportunistic_cleanup "$project_path"; then
             cleanup_reason="growth"
             if [ -n "${DEBUG_LOG:-}" ]; then
-                echo "[cleanup] $(date): trigger=$trigger bypass=growth recent_count=${CCMEM_CLEANUP_RECENT_COUNT:-0} threshold=${CCMEM_CLEANUP_RECENT_THRESHOLD:-0} window_seconds=${CCMEM_CLEANUP_RECENT_WINDOW:-0}" >> "$DEBUG_LOG"
+                echo "[cleanup] $(date): trigger=$trigger bypass=growth recent_count=${CCMEM_CLEANUP_RECENT_COUNT:-0} threshold=${CCMEM_CLEANUP_RECENT_THRESHOLD:-0} window_seconds=${CCMEM_CLEANUP_RECENT_WINDOW:-0} project=$(resolve_project_root "${project_path:-}")" >> "$DEBUG_LOG"
             fi
         else
             if [ -n "${DEBUG_LOG:-}" ]; then

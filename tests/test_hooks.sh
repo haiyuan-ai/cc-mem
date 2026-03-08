@@ -291,6 +291,46 @@ test_user_prompt_submit_clears_log() {
     cleanup_hooks_test
 }
 
+it "user-prompt-submit capture 失败时应把日志入队而不是丢弃"
+test_user_prompt_submit_queues_log_on_capture_failure() {
+    setup_hooks_test
+    local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
+    local old_memory_db="${MEMORY_DB:-}"
+
+    cat > "$log_file" <<'EOF'
+[FILE_CHANGE] src/app.js: 修改 A
+[BASH] npm test: 调试错误
+EOF
+
+    local input
+    input=$(make_hook_input "/tmp")
+    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+
+    local queued_count
+    queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_user-prompt-submit_*" 2>/dev/null | wc -l | tr -d ' ')
+    assert_equals "1" "$queued_count" "user-prompt-submit capture 失败时应生成 1 条队列日志"
+
+    local line_count
+    line_count=$(wc -l < "$log_file" 2>/dev/null | tr -d ' ')
+    assert_equals "0" "$line_count" "入队成功后 user-prompt-submit 缓冲日志应被清空"
+
+    local queued_file
+    queued_file=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_user-prompt-submit_*" 2>/dev/null | head -1)
+    local queued_content
+    queued_content=$(cat "$queued_file" 2>/dev/null || true)
+    assert_contains "$queued_content" "capture_failed" "user-prompt-submit 队列日志应记录失败原因"
+    assert_contains "$queued_content" "[FILE_CHANGE]" "user-prompt-submit 队列日志应保留原始内容"
+
+    if [ -n "$old_memory_db" ]; then
+        export MEMORY_DB="$old_memory_db"
+    else
+        unset MEMORY_DB
+    fi
+
+    rm -f "$log_file"
+    cleanup_hooks_test
+}
+
 describe "SessionStart Hook 功能"
 
 it "应该输出结构化上下文而不是搜索结果"
@@ -536,6 +576,42 @@ EOF
     cleanup_hooks_test
 }
 
+it "stop final response capture 失败时应把内容入队而不是丢弃"
+test_stop_final_response_queues_on_capture_failure() {
+    setup_hooks_test
+    local test_dir
+    local old_memory_db="${MEMORY_DB:-}"
+    test_dir=$(create_test_dir "ccmem_stop_final_response_fail")
+
+    cat > "$test_dir/transcript.jsonl" <<'EOF'
+{"type": "assistant", "message": {"content": "最终回复内容：修复完成，建议继续验证。"}}
+EOF
+
+    local input
+    input=$(make_hook_input "$test_dir" "\"transcript_path\": \"$test_dir/transcript.jsonl\"")
+    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+
+    local queued_count
+    queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_stop-final-response_*" 2>/dev/null | wc -l | tr -d ' ')
+    assert_equals "1" "$queued_count" "stop final response capture 失败时应生成 1 条队列日志"
+
+    local queued_file
+    queued_file=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_stop-final-response_*" 2>/dev/null | head -1)
+    local queued_content
+    queued_content=$(cat "$queued_file" 2>/dev/null || true)
+    assert_contains "$queued_content" "capture_failed" "stop final response 队列日志应记录失败原因"
+    assert_contains "$queued_content" "最终回复内容：修复完成，建议继续验证。" "stop final response 队列日志应保留原始内容"
+
+    if [ -n "$old_memory_db" ]; then
+        export MEMORY_DB="$old_memory_db"
+    else
+        unset MEMORY_DB
+    fi
+
+    rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log" "/tmp/ccmem_${TEST_SESSION_ID}_final_response.log"
+    cleanup_hooks_test
+}
+
 describe "批量保存阈值"
 
 it "应该累积记录直到阈值"
@@ -731,7 +807,7 @@ test_opportunistic_cleanup_bypasses_throttle_on_growth() {
     setup_hooks_test
     rm -f /tmp/ccmem_debug.log
 
-    export CCMEM_CLEANUP_GROWTH_THRESHOLD="1"
+    export CCMEM_CLEANUP_GROWTH_THRESHOLD="2"
     export CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS="3600"
     date +%s > "$CCMEM_CLEANUP_STATE_FILE"
 
@@ -748,6 +824,35 @@ test_opportunistic_cleanup_bypasses_throttle_on_growth() {
     local cleanup_log
     cleanup_log=$(grep "\\[cleanup\\].*bypass=growth" /tmp/ccmem_debug.log 2>/dev/null || true)
     assert_contains "$cleanup_log" "bypass=growth" "debug log 应记录增长速率绕过节流"
+
+    unset CCMEM_CLEANUP_GROWTH_THRESHOLD
+    unset CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS
+    cleanup_hooks_test
+}
+
+it "其他项目的增长不应绕过当前项目的节流"
+test_opportunistic_cleanup_growth_is_project_scoped() {
+    setup_hooks_test
+    rm -f /tmp/ccmem_debug.log
+
+    export CCMEM_CLEANUP_GROWTH_THRESHOLD="2"
+    export CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS="3600"
+    date +%s > "$CCMEM_CLEANUP_STATE_FILE"
+
+    store_memory "cleanup_scope_target" "/tmp/cleanup-project" "context" "当前项目旧记忆" "当前项目旧摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
+    store_memory "cleanup_scope_other" "/tmp/other-project" "context" "其他项目新记忆" "其他项目新摘要" "" "" "session_end" "temporary" "never" "/tmp/other-project" > /dev/null
+
+    local input
+    input=$(make_hook_input "/tmp/cleanup-project")
+    echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+
+    local remaining_count
+    remaining_count=$(db_query "SELECT COUNT(*) FROM memories WHERE summary='当前项目旧摘要';")
+    assert_equals "1" "$remaining_count" "其他项目增长不应触发当前项目绕过节流"
+
+    local cleanup_log
+    cleanup_log=$(grep "\\[cleanup\\].*bypass=growth.*project=/tmp/cleanup-project" /tmp/ccmem_debug.log 2>/dev/null || true)
+    assert_equals "" "$cleanup_log" "debug log 不应记录跨项目增长绕过"
 
     unset CCMEM_CLEANUP_GROWTH_THRESHOLD
     unset CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS
@@ -808,6 +913,7 @@ test_post_tool_use_queues_log_on_capture_failure
 
 # UserPromptSubmit 功能测试
 test_user_prompt_submit_clears_log
+test_user_prompt_submit_queues_log_on_capture_failure
 
 # SessionStart / recall 注入测试
 test_session_start_outputs_context_block
@@ -820,6 +926,7 @@ test_stop_no_transcript
 test_stop_queues_log_on_capture_failure
 test_stop_generate_summary
 test_stop_condenses_long_final_response
+test_stop_final_response_queues_on_capture_failure
 
 # 批量保存阈值测试
 test_batch_save_threshold
@@ -829,6 +936,7 @@ test_session_end_queues_log_on_capture_failure
 test_session_end_runs_opportunistic_cleanup
 test_opportunistic_cleanup_throttled
 test_opportunistic_cleanup_bypasses_throttle_on_growth
+test_opportunistic_cleanup_growth_is_project_scoped
 
 # Hooks 配置测试
 test_hooks_config_exists

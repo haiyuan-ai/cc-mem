@@ -50,7 +50,7 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
     TAGS="auto-captured"
 
     # 捕获记忆
-    echo "$CONTENT" | "$CLI" capture \
+    if echo "$CONTENT" | "$CLI" capture \
         -p "$PROJECT_PATH" \
         -c "$CATEGORY" \
         -s "$SESSION_ID" \
@@ -62,11 +62,18 @@ if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         --classification-reason "$CLASSIFICATION_REASON" \
         --classification-source "rule" \
         --classification-version "$CLASSIFICATION_RULE_VERSION" \
-        >/dev/null 2>&1 || true
-
-    # 清空日志
-    > "$LOG_FILE"
-    hook_log "user-prompt-submit" "Memory saved"
+        >/dev/null 2>&1; then
+        > "$LOG_FILE"
+        hook_log "user-prompt-submit" "Memory saved"
+    else
+        queued_path=""
+        queued_path=$(queue_failed_capture_log "user-prompt-submit" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+        if [ -n "$queued_path" ]; then
+            hook_log "user-prompt-submit" "Capture failed, buffered log moved to queue: $queued_path"
+        else
+            hook_log "user-prompt-submit" "Capture failed and queue fallback failed, keeping buffered log"
+        fi
+    fi
 else
     hook_log "user-prompt-submit" "No log file or empty"
 fi

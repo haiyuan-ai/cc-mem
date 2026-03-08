@@ -227,19 +227,30 @@ EOF
         fi
 
         # 保存为记忆
-        echo -e "=== 会话停止时的最后回复 ===\n$filtered_message" | "$CLI" capture \
+        final_response_log="/tmp/ccmem_${SESSION_ID}_final_response.log"
+        printf "=== 会话停止时的最后回复 ===\n%s\n" "$filtered_message" > "$final_response_log"
+        if cat "$final_response_log" | "$CLI" capture \
             -p "$PROJECT_PATH" \
             -c "context" \
             -s "$SESSION_ID" \
             -t "stop,final-response" \
             --source "stop_final_response" \
             --concepts "what-changed" \
-            2>/dev/null || true
-
-        echo "[stop] $(date): Saved final assistant message as memory" >> "$DEBUG_LOG"
+            2>/dev/null; then
+            rm -f "$final_response_log"
+            echo "[stop] $(date): Saved final assistant message as memory" >> "$DEBUG_LOG"
+        else
+            local final_response_queue=""
+            final_response_queue=$(queue_failed_capture_log "stop-final-response" "$SESSION_ID" "$final_response_log" "capture_failed" || true)
+            if [ -n "$final_response_queue" ]; then
+                echo "[stop] $(date): Final response capture failed, queued at: $final_response_queue" >> "$DEBUG_LOG"
+            else
+                echo "[stop] $(date): Final response capture failed and queue fallback failed" >> "$DEBUG_LOG"
+            fi
+        fi
     fi
 
-    run_opportunistic_cleanup "stop" 30 50 43200 || true
+    run_opportunistic_cleanup "stop" 30 50 43200 "$PROJECT_PATH" || true
 
     echo "[CC-Mem] 会话已停止：$SESSION_ID"
     echo "[stop] $(date): END" >> "$DEBUG_LOG"

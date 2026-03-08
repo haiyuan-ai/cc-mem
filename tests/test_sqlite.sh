@@ -794,18 +794,6 @@ test_generate_sessionstart_context() {
     assert_contains "$result" "/test/context" "应该包含项目路径"
 }
 
-it "主项目高价值记忆不足时应降级到扩展检索"
-test_generate_sessionstart_context_extended_fallback() {
-    local project="/test/context-fallback"
-    store_memory "fallback1" "$project" "context" "只有低优先级上下文" "扩展检索摘要" "fallback" "" "session_end" "temporary" "never" "$project" > /dev/null
-
-    local result
-    result=$(generate_injection_context "$project" 1)
-
-    assert_contains "$result" "主项目高价值记忆不足，已降级到扩展检索" "应提示已进入扩展检索"
-    assert_contains "$result" "扩展检索摘要" "扩展检索应返回主项目可用记忆"
-}
-
 it "应该在 SessionStart 中补充 related project 记忆"
 test_sessionstart_related_project_memory() {
     local child_path="/repo/worktrees/feature-a"
@@ -1030,7 +1018,6 @@ test_score_memory_salience
 test_score_memory_salience_prefers_current_project
 test_select_sessionstart_memories
 test_generate_sessionstart_context
-test_generate_sessionstart_context_extended_fallback
 test_sessionstart_related_project_memory
 test_sessionstart_timeline_hint
 test_sessionstart_context_timestamp

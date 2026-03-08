@@ -40,8 +40,7 @@
   - `durable` 保留更长上下文
   - `working` 折叠空白后轻量压缩
   - `temporary` 优先提取 `[FILE_CHANGE]` / `[BASH]` / error / fix 等关键签名
-- `inject-context` 新增主项目扩展检索 fallback：高价值记忆不足时，会降级检索当前项目内其他可用记忆，并显式标注降级状态
-- 机会式 cleanup 从“纯时间节流”升级为“时间节流 + 近期增长速率绕过”，在短时间内记忆增长过快时可提前执行安全清理
+- 机会式 cleanup 从“纯时间节流”升级为“时间节流 + 当前项目近期增长速率绕过”，在当前项目短时间内记忆增长过快时可提前执行安全清理
 
 ### 🧪 Testing
 
@@ -58,7 +57,7 @@
 - CLI 新增 `recall` 命令回归测试
 - 新增 hooks 失败入队测试，覆盖 `post-tool-use` / `stop` / `session-end`
 - 新增 `content_preview` 分层压缩测试，覆盖 `durable` / `working` / `temporary`
-- 新增 SessionStart 扩展检索 fallback 与 cleanup 增长速率绕过节流测试
+- 新增 cleanup 增长速率绕过节流测试
 
 ## [1.5.1] - 2026-03-07
 

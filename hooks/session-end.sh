@@ -98,7 +98,7 @@ else
     hook_log "session-end" "CLI not found at $CLI"
 fi
 
-run_opportunistic_cleanup "session-end" 30 50 43200 || true
+run_opportunistic_cleanup "session-end" 30 50 43200 "$PROJECT_PATH" || true
 
 echo "[CC-Mem] 会话已结束：$SESSION_ID"
 hook_log "session-end" "END"

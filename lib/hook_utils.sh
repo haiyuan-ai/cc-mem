@@ -148,6 +148,7 @@ queue_failed_capture_log() {
     local safe_hook=""
     local safe_session=""
     local queued_at=""
+    local unique_suffix=""
 
     if [ -z "$log_file" ] || [ ! -f "$log_file" ] || [ ! -s "$log_file" ]; then
         return 1
@@ -162,7 +163,11 @@ queue_failed_capture_log() {
     safe_hook=$(printf "%s" "$hook_name" | tr -c 'A-Za-z0-9_-' '_')
     safe_session=$(printf "%s" "${session_id:-unknown}" | tr -c 'A-Za-z0-9_-' '_')
     queued_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
-    queued_path="$queue_dir/failed_${safe_hook}_${safe_session}_$(date +%s 2>/dev/null || echo 0).log"
+    queued_path=$(mktemp "$queue_dir/failed_${safe_hook}_${safe_session}_XXXXXX.log" 2>/dev/null || true)
+    if [ -z "$queued_path" ]; then
+        unique_suffix="$(date +%s 2>/dev/null || echo 0)_$$_${RANDOM:-0}"
+        queued_path="$queue_dir/failed_${safe_hook}_${safe_session}_${unique_suffix}.log"
+    fi
 
     {
         printf "# hook=%s session_id=%s reason=%s queued_at=%s\n" "$hook_name" "${session_id:-unknown}" "$reason" "$queued_at"

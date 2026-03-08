@@ -363,7 +363,6 @@ ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 输出特点：
 - 只输出结构化 `<cc-mem-context>` 块
 - 默认优先注入 durable / conditional 记忆
-- 主项目高价值记忆不足时会降级到主项目扩展检索，并显式说明
 - 结果不足时会补 1 条 related project 记忆
 - 连续 debug / 连续决策链会自动附加 timeline hint
 
@@ -460,7 +459,7 @@ ccmem-cli.sh cleanup --aggressive
 
 补充说明：
 - 默认 `cleanup` 与 hook 自动清理共用同一套安全策略
-- hooks 机会式 cleanup 默认仍以时间节流为主，但在短时间内记忆增长过快时会绕过节流执行安全清理
+- hooks 机会式 cleanup 默认仍以时间节流为主，但在当前项目短时间内记忆增长过快时会绕过节流执行安全清理
 - `--aggressive` 仅用于手动维护，不会在 hooks 中自动触发
 
 ---
@@ -643,10 +642,9 @@ done < notes.txt
 
 1. 记录会话开始
 2. 按 `project_root` 加载当前项目高价值记忆
-3. 主项目高价值记忆不足时降级到主项目扩展检索
-4. 必要时补 1 条 related project 记忆
-5. 连续 debug / 连续决策链时追加 timeline hint
-6. 输出结构化 `<cc-mem-context>` 注入块
+3. 必要时补 1 条 related project 记忆
+4. 连续 debug / 连续决策链时追加 timeline hint
+5. 输出结构化 `<cc-mem-context>` 注入块
 
 ### SessionEnd Hook
 

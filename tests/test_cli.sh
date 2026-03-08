@@ -95,6 +95,40 @@ EOF
 }
 
 # ═══════════════════════════════════════════════════════════
+# 测试：stats 命令
+# ═══════════════════════════════════════════════════════════
+
+describe "stats 命令"
+
+it "应该显示最近记忆统计"
+test_stats_shows_summary() {
+    store_memory "stats_1" "/tmp/stats-project" "decision" "统计内容 A" "统计摘要 A" "" "" "manual" "durable" "always" "/tmp/stats-project" > /dev/null
+    store_memory "stats_2" "/tmp/stats-project" "debug" "统计内容 B" "统计摘要 B" "" "" "post_tool_use" "temporary" "never" "/tmp/stats-project" > /dev/null
+
+    local result
+    result=$("$CLI" stats --days 7 2>&1)
+
+    assert_contains "$result" "CC-Mem 统计" "应该显示 stats 标题"
+    assert_contains "$result" "总览" "应该显示总览区块"
+    assert_contains "$result" "Preview 占比" "应该显示 preview 压缩占比"
+    assert_contains "$result" "每日明细" "应该显示每日明细区块"
+}
+
+it "stats 命令应该支持按项目过滤"
+test_stats_supports_project_filter() {
+    store_memory "stats_project_a" "/tmp/stats-filter-a" "decision" "项目 A 内容" "项目 A 摘要" "" "" "manual" "durable" "always" "/tmp/stats-filter-a" > /dev/null
+    store_memory "stats_project_b" "/tmp/stats-filter-b" "debug" "项目 B 内容" "项目 B 摘要" "" "" "manual" "working" "conditional" "/tmp/stats-filter-b" > /dev/null
+
+    local result
+    result=$("$CLI" stats --days 7 --project "/tmp/stats-filter-a" 2>&1)
+
+    assert_contains "$result" "项目：/tmp/stats-filter-a" "应该显示过滤后的项目根路径"
+    assert_contains "$result" "记忆数量：1" "项目过滤后应该只统计该项目"
+    assert_contains "$result" "durable=1" "应该统计该项目的 durable 分层数量"
+    assert_contains "$result" "working=0" "不应混入其他项目的 working 记忆"
+}
+
+# ═══════════════════════════════════════════════════════════
 # 测试：capture 命令
 # ═══════════════════════════════════════════════════════════
 
@@ -456,6 +490,10 @@ test_status_shows_memory_count
 test_status_shows_session_count
 test_status_shows_failed_queue_summary
 test_status_shows_recent_cleanup_summary
+
+# stats 命令测试
+test_stats_shows_summary
+test_stats_supports_project_filter
 
 # capture 命令测试
 test_capture_memory

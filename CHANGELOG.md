@@ -41,6 +41,7 @@
   - `working` 折叠空白后轻量压缩
   - `temporary` 优先提取 `[FILE_CHANGE]` / `[BASH]` / error / fix 等关键签名
 - 机会式 cleanup 从“纯时间节流”升级为“时间节流 + 当前项目近期增长速率绕过”，在当前项目短时间内记忆增长过快时可提前执行安全清理
+- 新增 `ccmem-cli.sh stats`，提供最近 N 天的记忆数量、分层分布与 Preview 压缩占比统计
 
 ### 🧪 Testing
 
@@ -55,6 +56,7 @@
   - OpenCode 扩展目录结构
   - 插件入口 hook 契约
 - CLI 新增 `recall` 命令回归测试
+- CLI 新增 `stats` 命令回归测试
 - 新增 hooks 失败入队测试，覆盖 `post-tool-use` / `stop` / `session-end`
 - 新增 `content_preview` 分层压缩测试，覆盖 `durable` / `working` / `temporary`
 - 新增 cleanup 增长速率绕过节流测试

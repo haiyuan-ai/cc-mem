@@ -224,6 +224,9 @@ ccmem-cli.sh init
 # 查看状态
 ccmem-cli.sh status
 
+# 查看最近统计
+ccmem-cli.sh stats --days 7
+
 # 捕获记忆
 echo "重要内容" | ccmem-cli.sh capture -c "decision" -t "tag1,tag2"
 
@@ -272,6 +275,22 @@ ccmem-cli.sh history -r -l 10
 ```
 
 ### 命令详解
+
+#### stats - 查看最近记忆统计
+
+```bash
+# 查看最近 7 天统计
+ccmem-cli.sh stats
+
+# 查看指定项目最近 14 天统计
+ccmem-cli.sh stats --days 14 --project "/path/to/project"
+```
+
+输出特点：
+- 显示最近 N 天的记忆数量
+- 显示 `content` / `content_preview` 的字节统计与 Preview 占比
+- 显示 durable / working / temporary 分层分布
+- 支持按 `project_root` 过滤
 
 #### capture - 捕获记忆
 

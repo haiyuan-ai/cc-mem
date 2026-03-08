@@ -106,6 +106,20 @@ format_epoch_local() {
     fi
 }
 
+format_ratio_percent() {
+    local numerator="${1:-0}"
+    local denominator="${2:-0}"
+
+    if [ -z "$denominator" ] || [ "$denominator" = "0" ]; then
+        printf '%s\n' "0.0%%"
+        return
+    fi
+
+    awk -v num="$numerator" -v den="$denominator" 'BEGIN {
+        printf "%.1f%%\n", (num / den) * 100
+    }'
+}
+
 print_failed_queue_summary() {
     local queue_dir
     queue_dir=$(get_failed_capture_queue_dir)
@@ -190,6 +204,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   refresh-project-links 刷新自动项目关联
   cleanup           清理过期记忆（默认安全模式）
   status            显示记忆库状态
+  stats             显示最近记忆统计
   help              显示此帮助信息
 
 示例:
@@ -201,6 +216,7 @@ CC-Mem CLI - Claude Code 记忆管理工具
   echo "重要模式" | ccmem-cli.sh capture -c "pattern" -t "react,hooks" -m "自定义摘要"
   ccmem-cli.sh export -o "~/exports"
   ccmem-cli.sh related-projects -p "/path/to/project"
+  ccmem-cli.sh stats --days 7
 选项:
   -p, --project     项目路径
   -c, --category    记忆类别 (decision|solution|pattern|debug|context)
@@ -796,6 +812,111 @@ cmd_status() {
     echo "脚本目录：$SCRIPT_DIR"
 }
 
+cmd_stats() {
+    local days=7
+    local project_path=""
+    local project_root=""
+    local where_clause="timestamp_epoch >= CAST(strftime('%s', 'now', '-7 days') AS INTEGER)"
+    local summary_row=""
+    local mem_count=0
+    local content_bytes=0
+    local preview_bytes=0
+    local durable_count=0
+    local working_count=0
+    local temporary_count=0
+    local preview_ratio="0.0%"
+    local daily_rows=""
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -d|--days) days="$2"; shift ;;
+            -p|--project) project_path="$2"; shift ;;
+            -h|--help)
+                print_command_usage "stats [--days n] [--project path]"
+                echo "显示最近记忆统计"
+                echo ""
+                echo "选项："
+                echo "  -d, --days       统计最近天数（默认 7）"
+                echo "  -p, --project    仅统计指定项目"
+                return
+                ;;
+            *) print_unknown_option "$1"; return 1 ;;
+        esac
+        shift
+    done
+
+    if [[ ! "$days" =~ ^[0-9]+$ ]] || [ "$days" -le 0 ]; then
+        echo "错误：days 必须是正整数"
+        return 1
+    fi
+
+    where_clause="timestamp_epoch >= CAST(strftime('%s', 'now', '-$days days') AS INTEGER)"
+    if [ -n "$project_path" ]; then
+        project_root=$(resolve_project_root "$(resolve_effective_project_path "$project_path")")
+        where_clause="$where_clause AND project_root = '$(sql_escape "$project_root")'"
+    fi
+
+    summary_row=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT
+  COUNT(*),
+  COALESCE(SUM(LENGTH(content)), 0),
+  COALESCE(SUM(LENGTH(content_preview)), 0),
+  COALESCE(SUM(CASE WHEN memory_kind = 'durable' THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN memory_kind = 'working' THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN memory_kind = 'temporary' THEN 1 ELSE 0 END), 0)
+FROM memories
+WHERE $where_clause;
+EOF
+)
+
+    mem_count=$(printf "%s" "$summary_row" | cut -d'|' -f1)
+    content_bytes=$(printf "%s" "$summary_row" | cut -d'|' -f2)
+    preview_bytes=$(printf "%s" "$summary_row" | cut -d'|' -f3)
+    durable_count=$(printf "%s" "$summary_row" | cut -d'|' -f4)
+    working_count=$(printf "%s" "$summary_row" | cut -d'|' -f5)
+    temporary_count=$(printf "%s" "$summary_row" | cut -d'|' -f6)
+    preview_ratio=$(format_ratio_percent "$preview_bytes" "$content_bytes")
+
+    daily_rows=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT
+  date(datetime(timestamp_epoch, 'unixepoch', 'localtime')) AS day,
+  COUNT(*),
+  COALESCE(SUM(LENGTH(content)), 0),
+  COALESCE(SUM(LENGTH(content_preview)), 0),
+  COALESCE(SUM(CASE WHEN memory_kind = 'durable' THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN memory_kind = 'working' THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN memory_kind = 'temporary' THEN 1 ELSE 0 END), 0)
+FROM memories
+WHERE $where_clause
+GROUP BY day
+ORDER BY day DESC;
+EOF
+)
+
+    echo "=== CC-Mem 统计 ==="
+    echo ""
+    echo "范围：最近 ${days} 天"
+    echo "项目：${project_root:-全部项目}"
+    echo ""
+    echo "总览："
+    echo "  记忆数量：$mem_count"
+    echo "  Content 字节：$content_bytes"
+    echo "  Preview 字节：$preview_bytes"
+    echo "  Preview 占比：$preview_ratio"
+    echo "  分层分布：durable=$durable_count working=$working_count temporary=$temporary_count"
+    echo ""
+    echo "每日明细："
+    if [ -z "$daily_rows" ]; then
+        echo "  （无数据）"
+        return
+    fi
+
+    echo "  日期 | 数量 | Preview 占比 | durable | working | temporary"
+    printf "%s\n" "$daily_rows" | while IFS='|' read -r day day_count day_content day_preview day_durable day_working day_temporary; do
+        echo "  $day | $day_count | $(format_ratio_percent "$day_preview" "$day_content") | $day_durable | $day_working | $day_temporary"
+    done
+}
+
 cmd_inject_context() {
     local project_path=""
     local limit=3
@@ -885,6 +1006,9 @@ main() {
             ;;
         status)
             cmd_status
+            ;;
+        stats)
+            cmd_stats "$@"
             ;;
         inject-context)
             cmd_inject_context "$@"

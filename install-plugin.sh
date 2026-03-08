@@ -6,13 +6,36 @@ set -e
 
 OWNER="haiyuan-ai"
 REPO="cc-mem"
-VERSION="1.5.2"
+CHANNEL="main"
 CLAUDE_DIR="${HOME}/.claude/plugins"
 # Claude Code 期望的 marketplace 目录名格式: owner-repo
 MARKETPLACE_NAME="${OWNER}-${REPO}"
 INSTALL_DIR="${CLAUDE_DIR}/marketplaces/${MARKETPLACE_NAME}"
+TMP_INSTALL_DIR=""
+BACKUP_INSTALL_DIR=""
 
-echo "📦 安装 CC-Mem ${VERSION}..."
+cleanup_tmp_install() {
+    if [ -n "$TMP_INSTALL_DIR" ] && [ -d "$TMP_INSTALL_DIR" ]; then
+        rm -rf "$TMP_INSTALL_DIR"
+    fi
+}
+
+cleanup_backup_install() {
+    if [ -n "$BACKUP_INSTALL_DIR" ] && [ -d "$BACKUP_INSTALL_DIR" ]; then
+        rm -rf "$BACKUP_INSTALL_DIR"
+    fi
+}
+
+rollback_install() {
+    cleanup_tmp_install
+    if [ -n "$BACKUP_INSTALL_DIR" ] && [ -d "$BACKUP_INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR" ]; then
+        mv "$BACKUP_INSTALL_DIR" "$INSTALL_DIR" 2>/dev/null || true
+    fi
+}
+
+trap 'rollback_install' EXIT
+
+echo "📦 安装 CC-Mem (${CHANNEL})..."
 
 # 检查依赖
 if ! command -v git &> /dev/null; then
@@ -33,20 +56,35 @@ else
     HAS_PYTHON=true
 fi
 
-# 1. 克隆仓库
+# 1. 克隆仓库到临时目录，成功后再替换现有安装
 if [ -d "$INSTALL_DIR" ]; then
-    echo "  检测到现有安装，正在更新..."
-    rm -rf "$INSTALL_DIR"
+    echo "  检测到现有安装，准备安全更新..."
 fi
 
-mkdir -p "$INSTALL_DIR"
+mkdir -p "${CLAUDE_DIR}/marketplaces"
+TMP_INSTALL_DIR=$(mktemp -d "${CLAUDE_DIR}/marketplaces/.${MARKETPLACE_NAME}.tmp.XXXXXX")
 echo "  克隆仓库..."
-git clone --depth 1 "https://github.com/${OWNER}/${REPO}.git" "$INSTALL_DIR"
+git clone --depth 1 "https://github.com/${OWNER}/${REPO}.git" "$TMP_INSTALL_DIR"
+
+if [ ! -x "$TMP_INSTALL_DIR/bin/ccmem-cli.sh" ]; then
+    echo "❌ 错误: 克隆结果不完整，缺少 bin/ccmem-cli.sh"
+    exit 1
+fi
 
 # 1.1 确保脚本具有执行权限（跨平台 clone 后更稳）
-chmod +x "$INSTALL_DIR"/bin/*.sh 2>/dev/null || true
-chmod +x "$INSTALL_DIR"/hooks/*.sh 2>/dev/null || true
-chmod +x "$INSTALL_DIR"/mcp/*.py 2>/dev/null || true
+chmod +x "$TMP_INSTALL_DIR"/bin/*.sh 2>/dev/null || true
+chmod +x "$TMP_INSTALL_DIR"/hooks/*.sh 2>/dev/null || true
+chmod +x "$TMP_INSTALL_DIR"/mcp/*.py 2>/dev/null || true
+
+if [ -d "$INSTALL_DIR" ]; then
+    BACKUP_INSTALL_DIR="${INSTALL_DIR}.prev"
+    rm -rf "$BACKUP_INSTALL_DIR"
+    mv "$INSTALL_DIR" "$BACKUP_INSTALL_DIR"
+fi
+mv "$TMP_INSTALL_DIR" "$INSTALL_DIR"
+TMP_INSTALL_DIR=""
+cleanup_backup_install
+BACKUP_INSTALL_DIR=""
 
 # 2. 初始化数据库
 echo "  初始化数据库..."
@@ -110,10 +148,13 @@ if [ ! -f "$INSTALLED_FILE" ]; then
 fi
 
 COMMIT_SHA=$(cd "$INSTALL_DIR" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+SHORT_SHA=$(printf '%s' "$COMMIT_SHA" | cut -c1-7)
+INSTALL_VERSION="$CHANNEL"
+DISPLAY_VERSION="$CHANNEL@$SHORT_SHA"
 
 if [ "$HAS_JQ" = true ]; then
     TMP_FILE=$(mktemp)
-    jq --arg name "$MARKETPLACE_NAME" --arg path "$INSTALL_DIR" --arg version "$VERSION" --arg sha "$COMMIT_SHA" --arg date "$TIMESTAMP" '
+    jq --arg name "$MARKETPLACE_NAME" --arg path "$INSTALL_DIR" --arg version "$INSTALL_VERSION" --arg sha "$COMMIT_SHA" --arg date "$TIMESTAMP" '
         .plugins["cc-mem@" + $name] = [{
             "scope": "user",
             "installPath": $path,
@@ -125,7 +166,7 @@ if [ "$HAS_JQ" = true ]; then
     ' "$INSTALLED_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$INSTALLED_FILE"
 else
     cat > /tmp/ccmem_installed.json << EOF
-{"cc-mem@${MARKETPLACE_NAME}":[{"scope":"user","installPath":"${INSTALL_DIR}","version":"${VERSION}","installedAt":"${TIMESTAMP}","lastUpdated":"${TIMESTAMP}","gitCommitSha":"${COMMIT_SHA}"}]}
+{"cc-mem@${MARKETPLACE_NAME}":[{"scope":"user","installPath":"${INSTALL_DIR}","version":"${INSTALL_VERSION}","installedAt":"${TIMESTAMP}","lastUpdated":"${TIMESTAMP}","gitCommitSha":"${COMMIT_SHA}"}]}
 EOF
     if [ "$HAS_PYTHON" = true ]; then
     python3 -c "
@@ -146,7 +187,7 @@ with open('$INSTALLED_FILE', 'w') as f:
 fi
 
 echo ""
-echo "✅ CC-Mem ${VERSION} 安装完成！"
+echo "✅ CC-Mem ${DISPLAY_VERSION} 安装完成！"
 echo ""
 echo "📍 安装位置: ${INSTALL_DIR}"
 echo ""
@@ -166,4 +207,5 @@ echo "   2. 重新运行 claude"
 echo ""
 echo "📋 重启后运行 /plugin 可查看:"
 echo "   Marketplace: ● ${MARKETPLACE_NAME}"
-echo "   Installed:   ● cc-mem v${VERSION}"
+echo "   Installed:   ● cc-mem ${DISPLAY_VERSION}"
+trap - EXIT

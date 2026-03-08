@@ -3,6 +3,9 @@
 CONFIG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCMEM_ROOT_DIR="$(cd "$CONFIG_LIB_DIR/.." && pwd)"
 CCMEM_DEFAULT_CONFIG_FILE="$CCMEM_ROOT_DIR/config/config.json"
+CCMEM_CONFIG_STATUS=""
+CCMEM_CONFIG_STATUS_FILE=""
+CCMEM_CONFIG_WARNING_EMITTED=""
 
 expand_config_path() {
     local path="$1"
@@ -18,6 +21,48 @@ get_config_file_path() {
     printf '%s\n' "${CCMEM_CONFIG_FILE:-$CCMEM_DEFAULT_CONFIG_FILE}"
 }
 
+warn_config_once() {
+    local message="$1"
+
+    if [ -n "$CCMEM_CONFIG_WARNING_EMITTED" ]; then
+        return
+    fi
+
+    CCMEM_CONFIG_WARNING_EMITTED="1"
+    printf 'cc-mem: %s\n' "$message" >&2
+}
+
+ensure_config_state() {
+    local config_file=""
+
+    config_file=$(get_config_file_path)
+    if [ "$CCMEM_CONFIG_STATUS_FILE" = "$config_file" ] && [ -n "$CCMEM_CONFIG_STATUS" ]; then
+        return
+    fi
+
+    CCMEM_CONFIG_STATUS_FILE="$config_file"
+    CCMEM_CONFIG_STATUS=""
+
+    if [ ! -f "$config_file" ]; then
+        CCMEM_CONFIG_STATUS="missing"
+        return
+    fi
+
+    if ! command -v jq >/dev/null 2>&1; then
+        CCMEM_CONFIG_STATUS="no_jq"
+        warn_config_once "jq not found; ignoring config file $config_file and using defaults"
+        return
+    fi
+
+    if ! jq empty "$config_file" >/dev/null 2>&1; then
+        CCMEM_CONFIG_STATUS="invalid"
+        warn_config_once "invalid config file $config_file; using defaults"
+        return
+    fi
+
+    CCMEM_CONFIG_STATUS="ok"
+}
+
 config_get() {
     local key="$1"
     local default_value="${2:-}"
@@ -25,7 +70,8 @@ config_get() {
     local value=""
 
     config_file=$(get_config_file_path)
-    if [ ! -f "$config_file" ] || ! command -v jq >/dev/null 2>&1; then
+    ensure_config_state
+    if [ "$CCMEM_CONFIG_STATUS" != "ok" ]; then
         printf '%s\n' "$default_value"
         return
     fi

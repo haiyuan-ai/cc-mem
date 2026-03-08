@@ -132,7 +132,10 @@ test_stats_shows_summary() {
 
     assert_contains "$result" "CC-Mem 统计" "应该显示 stats 标题"
     assert_contains "$result" "总览" "应该显示总览区块"
+    assert_contains "$result" "平均每日新增" "应该显示平均每日新增"
+    assert_contains "$result" "活跃天数" "应该显示活跃天数"
     assert_contains "$result" "Preview 占比" "应该显示 preview 压缩占比"
+    assert_contains "$result" "分层占比" "应该显示分层占比"
     assert_contains "$result" "每日明细" "应该显示每日明细区块"
 }
 

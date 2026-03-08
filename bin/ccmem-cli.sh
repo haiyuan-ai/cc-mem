@@ -119,6 +119,20 @@ format_ratio_percent() {
     }'
 }
 
+format_decimal() {
+    local numerator="${1:-0}"
+    local denominator="${2:-1}"
+
+    if [ -z "$denominator" ] || [ "$denominator" = "0" ]; then
+        printf '%s\n' "0.0"
+        return
+    fi
+
+    awk -v num="$numerator" -v den="$denominator" 'BEGIN {
+        printf "%.1f\n", num / den
+    }'
+}
+
 print_failed_queue_summary() {
     local queue_dir
     queue_dir=$(get_failed_capture_queue_dir)
@@ -1063,6 +1077,11 @@ cmd_stats() {
     local working_count=0
     local temporary_count=0
     local preview_ratio="0.0%"
+    local durable_ratio="0.0%"
+    local working_ratio="0.0%"
+    local temporary_ratio="0.0%"
+    local avg_per_day="0.0"
+    local active_days=0
     local daily_rows=""
 
     while [[ "$#" -gt 0 ]]; do
@@ -1114,6 +1133,10 @@ EOF
     working_count=$(printf "%s" "$summary_row" | cut -d'|' -f5)
     temporary_count=$(printf "%s" "$summary_row" | cut -d'|' -f6)
     preview_ratio=$(format_ratio_percent "$preview_bytes" "$content_bytes")
+    durable_ratio=$(format_ratio_percent "$durable_count" "$mem_count")
+    working_ratio=$(format_ratio_percent "$working_count" "$mem_count")
+    temporary_ratio=$(format_ratio_percent "$temporary_count" "$mem_count")
+    avg_per_day=$(format_decimal "$mem_count" "$days")
 
     daily_rows=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT
@@ -1131,6 +1154,10 @@ ORDER BY day DESC;
 EOF
 )
 
+    if [ -n "$daily_rows" ]; then
+        active_days=$(printf "%s\n" "$daily_rows" | grep -c . | tr -d ' ')
+    fi
+
     echo "=== CC-Mem 统计 ==="
     echo ""
     echo "范围：最近 ${days} 天"
@@ -1138,10 +1165,13 @@ EOF
     echo ""
     echo "总览："
     echo "  记忆数量：$mem_count"
+    echo "  平均每日新增：$avg_per_day"
+    echo "  活跃天数：$active_days/$days"
     echo "  Content 字节：$content_bytes"
     echo "  Preview 字节：$preview_bytes"
     echo "  Preview 占比：$preview_ratio"
     echo "  分层分布：durable=$durable_count working=$working_count temporary=$temporary_count"
+    echo "  分层占比：durable=$durable_ratio working=$working_ratio temporary=$temporary_ratio"
     echo ""
     echo "每日明细："
     if [ -z "$daily_rows" ]; then

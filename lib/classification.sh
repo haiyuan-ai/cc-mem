@@ -135,7 +135,7 @@ apply_source_specific_scores() {
                 classification_add_score debug_score debug_reason 5 "tool error signal"
             fi
 
-            if classification_matches "$combined" '(\[FILE_CHANGE\].*(fix|fixed|修复|调整|改为|支持|优化|refactor|避免)|修复|解决|implemented|updated|added|回退|workaround)'; then
+            if classification_matches "$combined" '(\[FILE_CHANGE\].*(fix|fixed|修复|回退|避免|workaround|resolved)|\b(fix|fixed|resolved|workaround)\b|修复|解决|回退方案|避免再次出现)'; then
                 classification_add_score solution_score solution_reason 5 "tool fix signal"
             fi
 

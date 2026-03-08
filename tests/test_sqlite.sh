@@ -184,6 +184,14 @@ test_classify_post_tool_use_solution_signal() {
     assert_contains "$result" "solution|" "带修复与验证信号的 tool 输出应分类为 solution"
 }
 
+it "普通 updated/added 文件变更不应直接提升为 solution"
+test_classify_post_tool_use_generic_change_not_solution() {
+    local result
+    result=$(classify_memory "post_tool_use" "" "[FILE_CHANGE] README.md: updated docs and added examples" "auto-captured" "what-changed")
+
+    assert_not_contains "$result" "solution|" "普通 updated/added 变更不应直接提升为 solution"
+}
+
 it "自动分类应返回置信度和原因"
 test_classify_memory_confidence_and_reason() {
     local confidence
@@ -868,6 +876,48 @@ test_generate_query_recall_context() {
     local result=$(generate_query_recall_context "/test/recall" "SQLite" 3)
     assert_contains "$result" "<cc-mem-recall>" "应该包含 recall 标签"
     assert_contains "$result" "SQLite fallback 方案摘要" "应该返回相关摘要"
+}
+
+it "非 CJK query 应回退到 summary/content/tags 的 LIKE 匹配"
+test_generate_query_recall_context_non_cjk_like_fallback() {
+    local project="/test/recall-like-fallback"
+    store_memory "session_like_1" "$project" "decision" "版本兼容处理 v1.2.3" "版本兼容处理摘要" "release-note" "" "manual" "durable" "always" "$project" > /dev/null
+
+    local result
+    result=$(generate_query_recall_context "$project" "v1.2.3" 3)
+
+    assert_contains "$result" "版本兼容处理摘要" "非 CJK query 应能通过 LIKE fallback 命中摘要"
+}
+
+it "摘要中的竖线不应破坏 recall 和注入解析"
+test_injection_handles_pipe_in_summary() {
+    local project="/test/pipe-summary"
+    local summary="SQLite | fallback | note"
+
+    store_memory "session_pipe_1" "$project" "decision" "pipe content with | symbol" "$summary" "sqlite,pipe" "" "manual" "durable" "always" "$project" > /dev/null
+
+    local recall_result
+    recall_result=$(generate_query_recall_context "$project" "SQLite" 3)
+    assert_contains "$recall_result" "$summary" "recall 应保留完整摘要"
+
+    local context_result
+    context_result=$(generate_injection_context "$project" 1)
+    assert_contains "$context_result" "$summary" "sessionstart 注入应保留完整摘要"
+}
+
+it "相同摘要但不同类别的记忆不应被过度去重"
+test_injection_dedupe_keeps_distinct_memories() {
+    local project="/test/dedupe-summary"
+    local shared_summary="相同摘要"
+
+    store_memory "session_dedupe_1" "$project" "decision" "决策内容 A" "$shared_summary" "decision" "" "manual" "durable" "always" "$project" > /dev/null
+    store_memory "session_dedupe_2" "$project" "solution" "方案内容 B" "$shared_summary" "solution" "" "manual" "durable" "always" "$project" > /dev/null
+
+    local result
+    result=$(generate_injection_context "$project" 2)
+
+    assert_contains "$result" "[decision] $shared_summary" "decision 记忆不应被误去重"
+    assert_contains "$result" "[solution] $shared_summary" "solution 记忆不应被误去重"
 }
 
 it "query recall 应该补充 related project 记忆"

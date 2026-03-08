@@ -1,5 +1,7 @@
 #!/bin/bash
 
+INJECTION_FIELD_SEP=$'\x1f'
+
 get_recent_project_memories() {
     local project_path="$1"
     local limit="${2:-12}"
@@ -13,7 +15,7 @@ get_recent_project_memories() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
+    sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -131,7 +133,7 @@ score_memory_rows() {
 
     [ -z "$rows" ] && return
 
-    while IFS='|' read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch project_root classification_confidence content; do
+    while IFS="$INJECTION_FIELD_SEP" read -r id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch project_root classification_confidence content; do
         [ -z "$id" ] && continue
         local confidence
         local score
@@ -140,8 +142,8 @@ score_memory_rows() {
             confidence=$(classify_memory_confidence "$source" "$summary" "$content" "$tags" "$concepts")
         fi
         score=$(score_memory_salience "$category" "$confidence" "$source" "$memory_kind" "$auto_inject_policy" "$timestamp_epoch" "$project_root" "$current_project_root")
-        printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
-            "$score" "$confidence" "$id" "$timestamp" "$category" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$timestamp_epoch" "$project_root"
+        printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' \
+            "$score" "$INJECTION_FIELD_SEP" "$confidence" "$INJECTION_FIELD_SEP" "$id" "$INJECTION_FIELD_SEP" "$timestamp" "$INJECTION_FIELD_SEP" "$category" "$INJECTION_FIELD_SEP" "$summary" "$INJECTION_FIELD_SEP" "$tags" "$INJECTION_FIELD_SEP" "$concepts" "$INJECTION_FIELD_SEP" "$source" "$INJECTION_FIELD_SEP" "$memory_kind" "$INJECTION_FIELD_SEP" "$auto_inject_policy" "$INJECTION_FIELD_SEP" "$timestamp_epoch" "$INJECTION_FIELD_SEP" "$project_root"
     done <<EOF
 $rows
 EOF
@@ -152,12 +154,13 @@ select_top_scored_memories() {
     local rows="$2"
     local limit="${3:-3}"
 
-    score_memory_rows "$current_project_root" "$rows" | sort -t'|' -k1,1nr -k2,2nr -k12,12nr | awk -F'|' -v limit="$limit" '
+    score_memory_rows "$current_project_root" "$rows" | sort -t "$INJECTION_FIELD_SEP" -k1,1nr -k2,2nr -k12,12nr | awk -F "$INJECTION_FIELD_SEP" -v limit="$limit" '
 BEGIN { count = 0 }
 {
     summary = $6
-    if (summary == "" || seen[summary]) next
-    seen[summary] = 1
+    dedupe_key = $5 SUBSEP $6 SUBSEP $9 SUBSEP $13
+    if (summary == "" || seen[dedupe_key]) next
+    seen[dedupe_key] = 1
     print $0
     count++
     if (count >= limit) exit
@@ -174,7 +177,7 @@ select_sessionstart_memories() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    candidates=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
+    candidates=$(sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -233,7 +236,7 @@ select_related_sessionstart_memories() {
 
     related_root_escaped=$(sql_escape "$related_root")
 
-    candidates=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
+    candidates=$(sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$related_root_escaped'
@@ -302,7 +305,7 @@ get_timeline_hint_candidates() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
+    sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
 SELECT $(memory_display_timestamp_sql) AS timestamp, category, summary
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -335,7 +338,7 @@ should_include_timeline_hint() {
         return 0
     fi
 
-    categories=$(printf "%s\n" "$candidates" | cut -d'|' -f2 | paste -sd ',' -)
+    categories=$(printf "%s\n" "$candidates" | cut -d"$INJECTION_FIELD_SEP" -f2 | paste -sd ',' -)
     if printf "%s" "$categories" | grep -Eq 'debug,solution|solution,debug|decision,pattern|pattern,decision'; then
         return 0
     fi
@@ -347,7 +350,7 @@ generate_timeline_hint() {
     local project_path="$1"
     local limit="${2:-3}"
 
-    get_timeline_hint_candidates "$project_path" "$limit" | awk -F'|' '
+    get_timeline_hint_candidates "$project_path" "$limit" | awk -F "$INJECTION_FIELD_SEP" '
     {
         rows[NR] = sprintf("- [%s] %s", $2, $3)
     }
@@ -369,7 +372,7 @@ query_recall_memories_for_root() {
     query_escaped=$(sql_escape "$query")
 
     if contains_cjk "$query"; then
-        sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
+        sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -388,7 +391,7 @@ EOF
         return
     fi
 
-    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
+    sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -396,6 +399,9 @@ WHERE project_root = '$project_root_escaped'
   AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
   AND (
       rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+      OR content LIKE '%${query_escaped}%'
+      OR summary LIKE '%${query_escaped}%'
+      OR tags LIKE '%${query_escaped}%'
       OR concepts LIKE '%${query_escaped}%'
   )
 ORDER BY timestamp_epoch DESC
@@ -448,10 +454,11 @@ generate_query_recall_context() {
 
     echo "<cc-mem-recall>"
     echo "Relevant project context for the current request (use only if relevant):"
-    echo "$recall_memories" | awk -F'|' -v current_root="$(resolve_project_root "$project_path")" '
+    echo "$recall_memories" | awk -F "$INJECTION_FIELD_SEP" -v current_root="$(resolve_project_root "$project_path")" '
     {
-        if (seen[$6]) next
-        seen[$6] = 1
+        dedupe_key = $5 SUBSEP $6 SUBSEP $7 SUBSEP $13
+        if (seen[dedupe_key]) next
+        seen[dedupe_key] = 1
         if ($13 != "" && $13 != current_root) {
             printf("- [%s] %s (related: %s)\n", $5, $6, $13)
         } else {
@@ -489,7 +496,7 @@ EOF
 
     if [ -n "$high_value_memories" ]; then
         local main_category
-        main_category=$(echo "$high_value_memories" | head -1 | cut -d'|' -f5)
+        main_category=$(echo "$high_value_memories" | head -1 | cut -d"$INJECTION_FIELD_SEP" -f5)
         echo "- 最近工作集中在：${main_category:-项目开发}"
         echo "- 当前上下文重点：查看下方高价值记忆"
     else
@@ -502,7 +509,7 @@ EOF
 
     if [ -n "$high_value_memories" ]; then
         local i=1
-        echo "$high_value_memories" | while IFS='|' read -r score confidence id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch project_root; do
+        echo "$high_value_memories" | while IFS="$INJECTION_FIELD_SEP" read -r score confidence id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch project_root; do
             echo "$i. [$category] $summary"
             if [ -n "$tags" ]; then
                 echo "   tags: $tags"
@@ -516,7 +523,7 @@ EOF
     if [ -n "$related_memories" ]; then
         echo ""
         echo "Related Project Memory"
-        echo "$related_memories" | while IFS='|' read -r score confidence id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch related_root; do
+        echo "$related_memories" | while IFS="$INJECTION_FIELD_SEP" read -r score confidence id timestamp category summary tags concepts source memory_kind auto_inject_policy timestamp_epoch related_root; do
             echo "- [$category] $summary"
             echo "  related project: $related_root"
         done

@@ -52,12 +52,6 @@ Claude Code 轻量级记忆管理系统
 - **内容去重**：基于内容哈希自动检测重复记忆
 - **概念标签**：预定义概念自动识别
 
-## 快速链接
-
-- [🔧 兼容性指南](docs/COMPATIBILITY.md) - macOS/Ubuntu/Windows
-- [🧪 测试报告](tests/TEST-REPORT.md) - 当前测试结构与说明
-- [📖 文档索引](docs/INDEX.md) - 完整文档导航
-
 ## 安装
 
 ### 系统要求
@@ -151,7 +145,7 @@ git clone https://github.com/haiyuan-ai/cc-mem.git ~/.claude/plugins/marketplace
   {
     "scope": "user",
     "installPath": "/ABSOLUTE/PATH/TO/.claude/plugins/marketplaces/haiyuan-ai-cc-mem",
-    "version": "1.5.2",
+    "version": "main",
     "installedAt": "2026-03-07T00:00:00.000Z",
     "lastUpdated": "2026-03-07T00:00:00.000Z",
     "gitCommitSha": "COMMIT_SHA_HERE"
@@ -279,9 +273,9 @@ ccmem-cli.sh history -r -l 10
 ./scripts/repair-fts.sh --force --no-backup
 ```
 
-### 命令详解
+### 常用说明
 
-#### stats - 查看最近记忆统计
+#### `stats` - 查看最近记忆统计
 
 ```bash
 # 查看最近 7 天统计
@@ -297,7 +291,7 @@ ccmem-cli.sh stats --days 14 --project "/path/to/project"
 - 显示 durable / working / temporary 分层分布
 - 支持按 `project_root` 过滤
 
-#### capture - 捕获记忆
+#### `capture` - 捕获记忆
 
 ```bash
 # 从 stdin 读取
@@ -315,7 +309,7 @@ ccmem-cli.sh capture -p "/path/to/project" -c "solution" -t "bugfix"
 - `debug` - 调试记录
 - `context` - 上下文信息
 
-#### search - 检索记忆
+#### `search` - 检索记忆
 
 ```bash
 # 按项目路径检索
@@ -336,7 +330,7 @@ ccmem-cli.sh search -p "/path/to/project" -q "API" -c "solution" -l 5
 - 中文查询会自动启用 `LIKE` fallback
 - `search` 更适合找候选记忆，细节可继续用 `timeline` 和 `get`
 
-#### export - 导出记忆
+#### `export` - 导出记忆
 
 ```bash
 # 导出所有记忆到指定目录
@@ -348,7 +342,7 @@ ccmem-cli.sh export -p "/path/to/project" -o ~/exports
 
 **导出格式**：标准 Markdown 文件，可用任何 Markdown 编辑器打开（VS Code, Typora, Obsidian 等）
 
-#### retry - 重试失败队列
+#### `retry` - 重试失败队列
 
 ```bash
 # 重试所有失败项
@@ -363,9 +357,10 @@ ccmem-cli.sh retry --hook stop
 
 适用场景：
 - hooks 写库失败后，补写本地失败队列中的记忆
+- 恢复时保留失败发生时的原项目归属，避免记忆脱离上下文
 - duplicate 会视为已恢复并自动移除队列文件
 
-#### timeline - 获取时间线上下文
+#### `timeline` / `get`
 
 ```bash
 # 获取记忆的前后上下文
@@ -377,24 +372,7 @@ ccmem-cli.sh timeline -a mem_123 -b 3 -A 3
 # -A: 锚点之后的记忆数量（默认 3）
 ```
 
-#### get - 获取记忆详情
-
-```bash
-# 获取单条记忆详情
-ccmem-cli.sh get mem_123
-
-# 获取多条记忆详情
-ccmem-cli.sh get mem_123 mem_456 mem_789
-```
-
-#### capture - 手动创建记忆
-
-```bash
-# 带自定义摘要创建一条记忆
-echo "记忆内容" | ccmem-cli.sh capture -p "/path/to/project" -c "pattern" -t "tag" -m "自定义摘要"
-```
-
-#### inject-context - 生成结构化开场上下文
+#### `inject-context` / `recall`
 
 ```bash
 # 生成当前项目的开场注入上下文
@@ -407,67 +385,14 @@ ccmem-cli.sh inject-context -p "/path/to/project" -l 3
 - 结果不足时会补 1 条 related project 记忆
 - 连续 debug / 连续决策链会自动附加 timeline hint
 
-#### recall - 生成 query-aware recall 注入块
-
-```bash
-# 基于当前请求生成 recall 注入块
-ccmem-cli.sh recall -p "/path/to/project" -q "SQLite timeout" -l 3
-```
-
-输出特点：
-- 只输出结构化 `<cc-mem-recall>` 块
-- 当前项目优先，必要时补 related project 记忆
-- 适合在 MCP / 其他 agent 中作为按需检索入口
-
-#### MCP - 通过 MCP 共享记忆能力
-
-`cc-mem` 现在提供一个零依赖 stdio MCP server：
-
-```bash
-python3 /path/to/cc-mem/mcp/server.py
-```
-
-首批 MCP 工具：
-- `ccmem_capture`
-- `ccmem_search`
-- `ccmem_get`
-- `ccmem_timeline`
-- `ccmem_inject_context`
-- `ccmem_recall`
-
-一个最小的 Codex MCP 配置示例：
-
-```toml
-[mcp_servers.cc_mem]
-command = "python3"
-args = ["/ABSOLUTE/PATH/TO/cc-mem/mcp/server.py"]
-```
-
-这让其他 coding agent 也可以共享 `cc-mem` 的记忆保存、检索和注入能力。
-
-仓库内还提供了一个独立的 OpenCode 实验性扩展：
-
-- `extensions/opencode/`
-
-安装到 Claude Code 插件目录后，OpenCode 应引用构建产物：
-
-- `~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/extensions/opencode/dist/plugin.js`
-
-并把这个路径加入 `~/.config/opencode/opencode.json` 中的 `plugin` 数组。
-
-它基于 `cc-mem` MCP 实现：
-- 开场上下文注入
-- query-aware recall
-- 工具执行后的高价值记忆捕获
-
-#### projects - 列出所有项目
+#### `projects` / `related-projects`
 
 ```bash
 # 列出所有记忆项目
 ccmem-cli.sh projects
 ```
 
-#### related-projects / link-projects / unlink-projects - 跨项目关联管理
+#### `cleanup`
 
 ```bash
 # 查看当前项目的关联项目
@@ -485,118 +410,13 @@ ccmem-cli.sh unlink-projects "/repo/app" "/repo/lib-common"
 - 自动注入和 recall 最多补 1-2 条关联项目记忆
 - worktree / 父子项目会自动建立强关联，手动关联可覆盖自动规则
 
-#### cleanup - 清理过期记忆
-
 ```bash
 # 默认：安全清理，只删除低优先级临时记忆
 ccmem-cli.sh cleanup
 
-# 指定超龄阈值
-ccmem-cli.sh cleanup -d 60
-
 # 激进模式：扩大到所有已过期记忆和超龄 working 记忆
 ccmem-cli.sh cleanup --aggressive
 ```
-
-补充说明：
-- 默认 `cleanup` 与 hook 自动清理共用同一套安全策略
-- hooks 机会式 cleanup 默认仍以时间节流为主，但在当前项目短时间内记忆增长过快时会绕过节流执行安全清理
-- `--aggressive` 仅用于手动维护，不会在 hooks 中自动触发
-
----
-
-## 💡 使用示例
-
-### 捕获技术决策
-
-```bash
-# 记录技术选型
-echo "选择 SQLite 而非 PostgreSQL，因为轻量且不需要独立服务器" | \
-  ccmem-cli.sh capture -c "decision" -t "database,architecture"
-```
-
-### 记录问题解决方案
-
-```bash
-# 记录 Bug 修复
-echo "问题：SQLite 锁超时。解决方案：设置 busy_timeout=5000" | \
-  ccmem-cli.sh capture -c "solution" -t "bugfix,sqlite"
-```
-
-### 记录注意事项（Gotcha）
-
-```bash
-# 记录警告
-echo "注意：SQLite 在并发场景下可能锁超时" | \
-  ccmem-cli.sh capture -c "debug" -t "warning" --concepts "gotcha"
-```
-
-### 检索记忆
-
-```bash
-# 按关键词搜索
-ccmem-cli.sh search -q "SQLite timeout"
-
-# 按项目搜索
-ccmem-cli.sh search -p "/path/to/project"
-
-# 按类别搜索
-ccmem-cli.sh search -c "solution"
-```
-
-### 查看记忆历史
-
-```bash
-# 查看最近历史
-ccmem-cli.sh history -r -l 10
-
-# 查看特定记忆的历史
-ccmem-cli.sh history -m mem_xxx
-```
-
----
-
-## 🔧 高级用法
-
-### 自动化脚本
-
-```bash
-#!/bin/bash
-# daily-capture.sh - 每日工作记录
-
-DATE=$(date +%Y-%m-%d)
-echo "=== 每日工作记录 - $DATE ==="
-
-read -p "今日决策：" DECISION
-echo "$DECISION" | ccmem-cli.sh capture -c "decision" -t "daily,$DATE"
-
-read -p "解决问题：" SOLUTION
-echo "$SOLUTION" | ccmem-cli.sh capture -c "solution" -t "daily,$DATE"
-
-echo "记录完成！"
-```
-
-### 批量导入
-
-```bash
-# 从文件批量导入记忆
-while IFS= read -r line; do
-    echo "$line" | ccmem-cli.sh capture -c "context" -t "import"
-done < notes.txt
-```
-
----
-
-## 📌 最佳实践
-
-1. **及时记录** - 重要决策和解决方案立即记录
-2. **使用标签** - 添加有意义的标签便于检索
-3. **概念标注** - 使用 `--concepts` 标注概念类型
-4. **定期导出** - 定期导出记忆备份
-5. **项目隔离** - 不同项目使用不同路径
-6. **区分长期与临时记忆** - 决策/方案适合 durable，自动捕获流水更适合 temporary
-
----
 
 ## 配置文件
 
@@ -641,58 +461,6 @@ done < notes.txt
 - `injection.recall_limit`
 - `injection.related_project_limit`
 - `markdown_export_path`
-
-## 数据库结构
-
-### memories 表
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | TEXT | 主键 |
-| session_id | TEXT | 会话 ID |
-| timestamp_epoch | INTEGER | Epoch 时间戳（唯一权威时间字段，用于排序、清理和本地显示） |
-| project_path | TEXT | 项目路径 |
-| project_root | TEXT | 稳定项目根路径（git root 或当前路径） |
-| category | TEXT | 类别 |
-| source | TEXT | 来源（manual/post_tool_use/user_prompt_submit/stop_summary/...） |
-| classification_confidence | INTEGER | 分类置信度快照 |
-| classification_reason | TEXT | 分类原因快照 |
-| classification_source | TEXT | 分类来源（manual/rule） |
-| classification_version | TEXT | 分类规则版本快照 |
-| memory_kind | TEXT | 分层类型（durable/working/temporary） |
-| auto_inject_policy | TEXT | 自动注入策略（always/conditional/manual_only/never） |
-| expires_at | TEXT | 自动注入过期时间 |
-| content_hash | TEXT | 内容哈希（用于去重） |
-| concepts | TEXT | 自动识别的概念标签 |
-| content | TEXT | 内容 |
-| content_preview | TEXT | 分层内容预览 |
-| summary | TEXT | 摘要 |
-| tags | TEXT | 标签（逗号分隔） |
-
-### sessions 表
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | TEXT | 会话 ID |
-| start_time | DATETIME | 开始时间 |
-| end_time | DATETIME | 结束时间 |
-| project_path | TEXT | 项目路径 |
-| project_root | TEXT | 项目根路径 |
-| message_count | INTEGER | 消息数 |
-| summary | TEXT | 会话摘要 |
-| status | TEXT | 会话状态（active/completed/stopped） |
-
-### project_links 表
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | TEXT | 主键 |
-| source_root | TEXT | 源项目根路径 |
-| target_root | TEXT | 目标项目根路径 |
-| link_type | TEXT | 关联类型（manual/worktree/parent_child/same_repo） |
-| strength | INTEGER | 关联强度 |
-| reason | TEXT | 关联原因 |
-| is_manual | INTEGER | 是否为手动关联 |
 
 ## Hooks
 
@@ -743,87 +511,11 @@ done < notes.txt
 导出的 Markdown 文件包含：
 
 - Frontmatter 元数据
-- 标签（YAML 格式）
-- 项目链接
-- 元数据信息
+- 摘要标题
+- 完整正文内容
+- 项目与标签等基础元数据
 
 导出位置：由 `-o` 参数或配置文件指定（默认：`~/cc-mem-export`）
-
-## 高级用法
-
-### 手动创建记忆
-
-```bash
-echo "自定义 Hook 模式正文" | ccmem-cli.sh capture -p "/path/to/project" -c "pattern" -t "react,hooks" -m "自定义 Hook 模式"
-```
-
-### 全文检索
-
-```bash
-# 使用 SQLite FTS5 全文检索
-ccmem-cli.sh search -q "database schema design" -l 10
-```
-
-### 项目隔离
-
-记忆默认按 `project_root` 隔离；在 Git worktree 或父子项目场景下，会受控补充 related project 记忆，而不是做全局跨项目混入。
-
-### 标签系统
-
-使用逗号分隔的标签：
-
-```bash
-ccmem-cli.sh capture -t "important,architecture,database"
-```
-
-### 记忆分层
-
-默认映射：
-
-- `manual + decision/solution/pattern` -> `durable + always`
-- `manual + debug/context` -> `working + conditional`
-- `user_prompt_submit / stop_summary` -> `working + conditional`
-- `post_tool_use / session_end` -> `temporary + never`
-- `stop_final_response` -> `temporary + manual_only`
-
-预览压缩策略：
-
-- `durable`：保留更长上下文，适合长期决策和方案
-- `working`：折叠多余空白后做轻量压缩
-- `temporary`：优先保留命令、文件变更、错误、修复等关键签名
-
-### 自动分类
-
-当前自动分类器采用本地规则，不依赖 LLM，主要用于自动采集路径：
-
-- `post_tool_use`
-- `user_prompt_submit`
-- `session_end`
-- `stop_summary`
-
-分类器会综合考虑：
-
-- `source`
-- `summary`
-- `content`
-- `tags`
-- `concepts`
-
-当前输出：
-
-- `category`
-- `confidence`
-- `reason`
-
-来源侧的当前策略：
-
-- `user_prompt_submit`：优先识别可复用的偏好、约束、规则、决策；短确认语和一次性推进语默认降级
-- `post_tool_use`：优先提炼错误、修复、验证、文件变更等关键信号；普通成功输出和环境噪音默认保持低优先级
-- `stop_summary`：优先保留结果总结和决策取舍
-
-这些结果会写入 debug log，便于排查为什么某条自动记忆被归类为 `debug`、`solution`、`decision`、`pattern` 或 `context`。
-
----
 
 ## 竞品对比
 
@@ -842,36 +534,6 @@ ccmem-cli.sh capture -t "important,architecture,database"
 | **MCP 工具** | ✅ | ✅ | ❌ | ✅ |
 | **Web UI** | ❌ | ✅ | ❌ | ✅ |
 | **多模态** | ❌ | ❌ | ✅ | ✅ |
-
-### 选择建议
-
-| 需求 | 推荐项目 |
-|------|----------|
-| 个人轻量使用 | **CC-mem** ✅ |
-| 企业级部署 | mem0 |
-| 需要向量检索 | mem0 / memU |
-| 需要 Graph 记忆 | memU |
-| 需要 Web UI | claude-mem / mem0 |
-| 本地轻量安装 | **CC-mem** ✅ |
-
----
-
-## 技术选型说明
-
-### 为什么使用 SQLite 而不是 Markdown 文件？
-
-**SQLite 是系统内置的**（macOS/Linux 自带），不是额外依赖。选择 SQLite 的原因：
-
-| 考量 | SQLite | Markdown 文件 |
-|------|--------|--------------|
-| **检索效率** | ✅ FTS5 全文检索，毫秒级 | ❌ 需要遍历所有文件 |
-| **去重检测** | ✅ 哈希索引，O(1) 查询 | ❌ 需要遍历比较 |
-| **结构化查询** | ✅ 按类别/项目/时间筛选 | ❌ 需要手动解析 |
-| **事务安全** | ✅ 原子操作，不会损坏 | ❌ 并发写入可能损坏 |
-
-**结论**：SQLite 提供零额外依赖的高性能存储方案，适合大规模记忆管理。
-
----
 
 ## 致谢
 
@@ -913,12 +575,6 @@ chmod +x ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem/hooks/*.sh
 - 支持敏感内容过滤（如 `<private>` 标签）
 - 支持按项目隔离记忆（基于 `project_root`）
 - 支持清理过期数据（可手动执行 `cleanup`，hooks 也会机会式安全清理低优先级过期记忆）
-
-## 开发计划
-
-- [ ] 多模态内容的文本化记忆支持
-- [ ] 向量检索支持
-- [ ] Graph 视图关联
 
 ## License
 

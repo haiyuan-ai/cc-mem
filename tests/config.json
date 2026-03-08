@@ -2,6 +2,7 @@
   "memory_db": "/tmp/ccmem_test_memory.db",
   "failed_queue_dir": "/tmp/ccmem_test_failed_queue",
   "debug_log": "/tmp/ccmem_test_debug.log",
+  "markdown_export_path": "/tmp/ccmem_test_export",
   "cleanup": {
     "throttle_seconds": 43200,
     "growth_threshold": 100,
@@ -19,6 +20,5 @@
     "session_start_limit": 3,
     "recall_limit": 3,
     "related_project_limit": 1
-  },
-  "markdown_export_path": "/tmp/ccmem_test_export"
+  }
 }

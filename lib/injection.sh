@@ -215,6 +215,44 @@ EOF
     select_top_scored_memories "$project_root" "$candidates" "$limit"
 }
 
+select_extended_sessionstart_memories() {
+    local project_path="$1"
+    local limit="${2:-3}"
+    local project_root
+    local project_root_escaped
+    local candidates
+
+    project_root=$(resolve_project_root "$project_path")
+    project_root_escaped=$(sql_escape "$project_root")
+
+    candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
+FROM memories
+WHERE project_root = '$project_root_escaped'
+  AND summary IS NOT NULL
+  AND summary != ''
+  AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
+ORDER BY
+  CASE memory_kind
+    WHEN 'durable' THEN 3
+    WHEN 'working' THEN 2
+    ELSE 1
+  END DESC,
+  CASE category
+    WHEN 'decision' THEN 100
+    WHEN 'debug' THEN 90
+    WHEN 'solution' THEN 80
+    WHEN 'pattern' THEN 50
+    ELSE 20
+  END DESC,
+  timestamp_epoch DESC
+LIMIT 30;
+EOF
+)
+
+    select_top_scored_memories "$project_root" "$candidates" "$limit"
+}
+
 select_related_sessionstart_memories() {
     local project_path="$1"
     local limit="${2:-1}"
@@ -464,6 +502,7 @@ generate_query_recall_context() {
 generate_injection_context() {
     local project_path="$1"
     local limit="${2:-3}"
+    local recall_mode="primary"
 
     if [ -z "$project_path" ]; then
         project_path="$(pwd)"
@@ -474,6 +513,12 @@ generate_injection_context() {
 
     local high_value_memories
     high_value_memories=$(select_sessionstart_memories "$project_path" "$limit")
+    if [ -z "$high_value_memories" ]; then
+        high_value_memories=$(select_extended_sessionstart_memories "$project_path" "$limit")
+        if [ -n "$high_value_memories" ]; then
+            recall_mode="extended"
+        fi
+    fi
     local related_memories
     related_memories=$(select_related_sessionstart_memories "$project_path" 1)
     local last_session
@@ -491,7 +536,11 @@ EOF
         local main_category
         main_category=$(echo "$high_value_memories" | head -1 | cut -d'|' -f5)
         echo "- 最近工作集中在：${main_category:-项目开发}"
-        echo "- 当前上下文重点：查看下方高价值记忆"
+        if [ "$recall_mode" = "extended" ]; then
+            echo "- 当前上下文重点：主项目高价值记忆不足，已降级到扩展检索"
+        else
+            echo "- 当前上下文重点：查看下方高价值记忆"
+        fi
     else
         echo "- 暂无历史记忆记录"
         echo "- 建议先进行工作，记忆会自动捕获"

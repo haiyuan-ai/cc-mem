@@ -133,3 +133,47 @@ hook_classification_policy() {
     hook_log "$hook_name" "MEMORY_KIND=$memory_kind AUTO_INJECT_POLICY=$inject_policy"
     printf "%s|%s\n" "$memory_kind" "$inject_policy"
 }
+
+get_failed_capture_queue_dir() {
+    printf '%s\n' "${CCMEM_FAILED_QUEUE_DIR:-/tmp/ccmem_failed_queue}"
+}
+
+queue_failed_capture_log() {
+    local hook_name="$1"
+    local session_id="$2"
+    local log_file="$3"
+    local reason="${4:-capture_failed}"
+    local queue_dir=""
+    local queued_path=""
+    local safe_hook=""
+    local safe_session=""
+    local queued_at=""
+
+    if [ -z "$log_file" ] || [ ! -f "$log_file" ] || [ ! -s "$log_file" ]; then
+        return 1
+    fi
+
+    queue_dir=$(get_failed_capture_queue_dir)
+    if ! mkdir -p "$queue_dir" 2>/dev/null; then
+        hook_log "$hook_name" "failed to create queue dir: $queue_dir"
+        return 1
+    fi
+
+    safe_hook=$(printf "%s" "$hook_name" | tr -c 'A-Za-z0-9_-' '_')
+    safe_session=$(printf "%s" "${session_id:-unknown}" | tr -c 'A-Za-z0-9_-' '_')
+    queued_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+    queued_path="$queue_dir/failed_${safe_hook}_${safe_session}_$(date +%s 2>/dev/null || echo 0).log"
+
+    {
+        printf "# hook=%s session_id=%s reason=%s queued_at=%s\n" "$hook_name" "${session_id:-unknown}" "$reason" "$queued_at"
+        cat "$log_file"
+    } > "$queued_path" 2>/dev/null || {
+        hook_log "$hook_name" "failed to persist queued log: $queued_path"
+        return 1
+    }
+
+    : > "$log_file"
+    hook_log "$hook_name" "queued failed capture log to $queued_path"
+    printf '%s\n' "$queued_path"
+    return 0
+}

@@ -34,6 +34,15 @@
   - tool 输出本地降噪与裁剪
 - 保持主 Bash/SQLite 运行时不引入额外 Node 依赖
 
+#### 4. 记忆采集与注入链路增强
+- hooks 捕获改为“成功才清空日志，失败则进入本地待处理队列”，降低自动采集路径的数据丢失风险
+- `content_preview` 从固定长度截断升级为按 `memory_kind` 分层压缩：
+  - `durable` 保留更长上下文
+  - `working` 折叠空白后轻量压缩
+  - `temporary` 优先提取 `[FILE_CHANGE]` / `[BASH]` / error / fix 等关键签名
+- `inject-context` 新增主项目扩展检索 fallback：高价值记忆不足时，会降级检索当前项目内其他可用记忆，并显式标注降级状态
+- 机会式 cleanup 从“纯时间节流”升级为“时间节流 + 近期增长速率绕过”，在短时间内记忆增长过快时可提前执行安全清理
+
 ### 🧪 Testing
 
 - 新增 `tests/test_mcp.sh`
@@ -47,6 +56,9 @@
   - OpenCode 扩展目录结构
   - 插件入口 hook 契约
 - CLI 新增 `recall` 命令回归测试
+- 新增 hooks 失败入队测试，覆盖 `post-tool-use` / `stop` / `session-end`
+- 新增 `content_preview` 分层压缩测试，覆盖 `durable` / `working` / `temporary`
+- 新增 SessionStart 扩展检索 fallback 与 cleanup 增长速率绕过节流测试
 
 ## [1.5.1] - 2026-03-07
 

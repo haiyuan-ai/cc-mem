@@ -181,7 +181,7 @@ EOF
         AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
 
         # 捕获记忆
-        echo "$operation_log" | "$CLI" capture \
+        if echo "$operation_log" | "$CLI" capture \
             -p "$PROJECT_PATH" \
             -c "$CATEGORY" \
             -s "$SESSION_ID" \
@@ -194,14 +194,21 @@ EOF
             --classification-source "rule" \
             --classification-version "$CLASSIFICATION_RULE_VERSION" \
             --concepts "what-changed" \
-            2>/dev/null || true
-
-        # 清空日志
-        > "$LOG_FILE"
-        echo "[stop] $(date): Buffered log cleared after stop_summary capture" >> "$DEBUG_LOG"
-
-        echo "[CC-Mem] 已保存停止时的记忆：$SESSION_ID"
-        echo "[stop] $(date): Memory saved from operation log" >> "$DEBUG_LOG"
+            2>/dev/null; then
+            > "$LOG_FILE"
+            echo "[stop] $(date): Buffered log cleared after stop_summary capture" >> "$DEBUG_LOG"
+            echo "[CC-Mem] 已保存停止时的记忆：$SESSION_ID"
+            echo "[stop] $(date): Memory saved from operation log" >> "$DEBUG_LOG"
+        else
+            local queued_path=""
+            queued_path=$(queue_failed_capture_log "stop" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+            if [ -n "$queued_path" ]; then
+                echo "[stop] $(date): Capture failed, buffered log moved to queue: $queued_path" >> "$DEBUG_LOG"
+            else
+                echo "[stop] $(date): Capture failed and queue fallback failed, keeping buffered log" >> "$DEBUG_LOG"
+            fi
+            echo "[CC-Mem] 停止记忆保存失败，已入队待重试：$SESSION_ID"
+        fi
     fi
 
     # 如果有助手消息，也单独保存为一条记忆（记录最后的工作成果）

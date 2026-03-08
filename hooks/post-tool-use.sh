@@ -106,7 +106,7 @@ if [ -f "$LOG_FILE" ]; then
         AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
 
         # 捕获记忆
-        echo "$CONTENT" | "$CLI" capture \
+        if echo "$CONTENT" | "$CLI" capture \
             -p "$PROJECT_PATH" \
             -c "$CATEGORY" \
             -s "$SESSION_ID" \
@@ -118,11 +118,18 @@ if [ -f "$LOG_FILE" ]; then
             --classification-source "rule" \
             --classification-version "$CLASSIFICATION_RULE_VERSION" \
             --concepts "what-changed" \
-            2>/dev/null || true
-
-        # 清空日志
-        > "$LOG_FILE"
-        hook_log "post-tool-use" "Buffered log cleared after capture"
+            2>/dev/null; then
+            > "$LOG_FILE"
+            hook_log "post-tool-use" "Buffered log cleared after capture"
+        else
+            queued_path=""
+            queued_path=$(queue_failed_capture_log "post-tool-use" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+            if [ -n "$queued_path" ]; then
+                hook_log "post-tool-use" "Capture failed, buffered log moved to queue: $queued_path"
+            else
+                hook_log "post-tool-use" "Capture failed and queue fallback failed, keeping buffered log"
+            fi
+        fi
     fi
 fi
 

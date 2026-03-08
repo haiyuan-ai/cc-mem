@@ -356,6 +356,47 @@ test_store_memory_sets_epoch() {
     fi
 }
 
+it "durable 记忆应保留更长的 content_preview"
+test_store_memory_durable_preview() {
+    local durable_content
+    durable_content=$(printf 'durable-preview-%.0s' $(seq 1 40))
+    local id
+    id=$(store_memory "session1" "/test/project" "decision" "$durable_content" "durable 摘要" "" "" "manual" "durable" "always" "/test/project")
+
+    local preview
+    preview=$(sqlite3 "$TEST_DB" "SELECT content_preview FROM memories WHERE id='$id';")
+
+    assert_contains "$preview" "durable-preview" "durable preview 应保留原始上下文"
+    assert_true "[ ${#preview} -gt 220 ]" "durable preview 应明显长于 working 默认长度"
+}
+
+it "working 记忆应压缩空白后的 content_preview"
+test_store_memory_working_preview() {
+    local content=$'第一行上下文\n\n第二行说明\t包含多个空白\n第三行补充'
+    local id
+    id=$(store_memory "session1" "/test/project" "solution" "$content" "working 摘要" "" "" "user_prompt_submit" "working" "conditional" "/test/project")
+
+    local preview
+    preview=$(sqlite3 "$TEST_DB" "SELECT content_preview FROM memories WHERE id='$id';")
+
+    assert_contains "$preview" "第一行上下文 第二行说明 包含多个空白 第三行补充" "working preview 应折叠多余空白"
+    assert_true "[[ \"$preview\" != *$'\\n'* ]]" "working preview 不应保留换行"
+}
+
+it "temporary 记忆应优先提取关键签名作为 content_preview"
+test_store_memory_temporary_preview() {
+    local content=$'背景说明\n[FILE_CHANGE] src/app.js: 修复登录 bug\n普通噪音\n[BASH] npm test: 验证 fix completed\n更多背景'
+    local id
+    id=$(store_memory "session1" "/test/project" "debug" "$content" "temporary 摘要" "" "" "post_tool_use" "temporary" "never" "/test/project")
+
+    local preview
+    preview=$(sqlite3 "$TEST_DB" "SELECT content_preview FROM memories WHERE id='$id';")
+
+    assert_contains "$preview" "[FILE_CHANGE] src/app.js: 修复登录 bug" "temporary preview 应保留文件变更签名"
+    assert_contains "$preview" "[BASH] npm test: 验证 fix completed" "temporary preview 应保留命令签名"
+    assert_true "[[ \"$preview\" != *\"背景说明\"* ]]" "temporary preview 应尽量过滤无关背景"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：记忆去重
 # ═══════════════════════════════════════════════════════════
@@ -753,6 +794,18 @@ test_generate_sessionstart_context() {
     assert_contains "$result" "/test/context" "应该包含项目路径"
 }
 
+it "主项目高价值记忆不足时应降级到扩展检索"
+test_generate_sessionstart_context_extended_fallback() {
+    local project="/test/context-fallback"
+    store_memory "fallback1" "$project" "context" "只有低优先级上下文" "扩展检索摘要" "fallback" "" "session_end" "temporary" "never" "$project" > /dev/null
+
+    local result
+    result=$(generate_injection_context "$project" 1)
+
+    assert_contains "$result" "主项目高价值记忆不足，已降级到扩展检索" "应提示已进入扩展检索"
+    assert_contains "$result" "扩展检索摘要" "扩展检索应返回主项目可用记忆"
+}
+
 it "应该在 SessionStart 中补充 related project 记忆"
 test_sessionstart_related_project_memory() {
     local child_path="/repo/worktrees/feature-a"
@@ -927,6 +980,9 @@ test_store_memory_all_fields
 test_store_memory_metadata_fields
 test_store_memory_classification_snapshot_fields
 test_store_memory_sets_epoch
+test_store_memory_durable_preview
+test_store_memory_working_preview
+test_store_memory_temporary_preview
 
 # 去重测试
 test_duplicate_detection_same_content
@@ -974,6 +1030,7 @@ test_score_memory_salience
 test_score_memory_salience_prefers_current_project
 test_select_sessionstart_memories
 test_generate_sessionstart_context
+test_generate_sessionstart_context_extended_fallback
 test_sessionstart_related_project_memory
 test_sessionstart_timeline_hint
 test_sessionstart_context_timestamp

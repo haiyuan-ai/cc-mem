@@ -61,7 +61,7 @@ if [ -f "$CLI" ]; then
             AUTO_INJECT_POLICY=$(printf "%s\n" "$policy_result" | cut -d'|' -f2)
 
             # 捕获记忆
-            echo "$CONTENT" | "$CLI" capture \
+            if echo "$CONTENT" | "$CLI" capture \
                 -p "$PROJECT_PATH" \
                 -c "$CATEGORY" \
                 -s "$SESSION_ID" \
@@ -74,14 +74,21 @@ if [ -f "$CLI" ]; then
                 --classification-source "rule" \
                 --classification-version "$CLASSIFICATION_RULE_VERSION" \
                 --concepts "what-changed" \
-                2>/dev/null || true
-
-            # 清空日志
-            > "$LOG_FILE"
-            hook_log "session-end" "Buffered log cleared after session-end capture"
-
-            echo "[CC-Mem] 已保存会话记忆：$SESSION_ID"
-            hook_log "session-end" "Memory saved"
+                2>/dev/null; then
+                > "$LOG_FILE"
+                hook_log "session-end" "Buffered log cleared after session-end capture"
+                echo "[CC-Mem] 已保存会话记忆：$SESSION_ID"
+                hook_log "session-end" "Memory saved"
+            else
+                queued_path=""
+                queued_path=$(queue_failed_capture_log "session-end" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
+                if [ -n "$queued_path" ]; then
+                    hook_log "session-end" "Capture failed, buffered log moved to queue: $queued_path"
+                else
+                    hook_log "session-end" "Capture failed and queue fallback failed, keeping buffered log"
+                fi
+                echo "[CC-Mem] 会话记忆保存失败，已入队待重试：$SESSION_ID"
+            fi
         fi
     else
         echo "[CC-Mem] 会话结束，无待保存记忆：$SESSION_ID"

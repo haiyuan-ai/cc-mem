@@ -237,6 +237,38 @@ cleanup_memories() {
     esac
 }
 
+count_recent_memories() {
+    local window_seconds="${1:-3600}"
+
+    sqlite3 "$MEMORY_DB" <<EOF
+SELECT COUNT(*)
+FROM memories
+WHERE timestamp_epoch >= CAST(strftime('%s', 'now') AS INTEGER) - $window_seconds;
+EOF
+}
+
+should_force_opportunistic_cleanup() {
+    local recent_threshold="${CCMEM_CLEANUP_GROWTH_THRESHOLD:-100}"
+    local window_seconds="${CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS:-3600}"
+    local recent_count=0
+
+    if [[ ! "$recent_threshold" =~ ^[0-9]+$ ]] || [ "$recent_threshold" -le 0 ]; then
+        return 1
+    fi
+
+    recent_count=$(count_recent_memories "$window_seconds" 2>/dev/null || echo "0")
+    [[ ! "$recent_count" =~ ^[0-9]+$ ]] && recent_count=0
+
+    if [ "$recent_count" -ge "$recent_threshold" ]; then
+        export CCMEM_CLEANUP_RECENT_COUNT="$recent_count"
+        export CCMEM_CLEANUP_RECENT_WINDOW="$window_seconds"
+        export CCMEM_CLEANUP_RECENT_THRESHOLD="$recent_threshold"
+        return 0
+    fi
+
+    return 1
+}
+
 should_run_opportunistic_cleanup() {
     local throttle_seconds="${1:-43200}"
     local state_file="${CCMEM_CLEANUP_STATE_FILE:-/tmp/ccmem_cleanup_state}"
@@ -271,19 +303,27 @@ run_opportunistic_cleanup() {
     local now_ts=""
     local last_ts=""
     local age_seconds=""
+    local cleanup_reason="schedule"
 
     if ! should_run_opportunistic_cleanup "$throttle_seconds"; then
-        if [ -n "${DEBUG_LOG:-}" ]; then
-            now_ts=$(date +%s 2>/dev/null || echo "0")
-            last_ts=$(cat "$state_file" 2>/dev/null || echo "0")
-            age_seconds=$((now_ts - last_ts))
-            echo "[cleanup] $(date): trigger=$trigger skipped=throttle last_run=$last_ts age_seconds=$age_seconds" >> "$DEBUG_LOG"
+        if should_force_opportunistic_cleanup; then
+            cleanup_reason="growth"
+            if [ -n "${DEBUG_LOG:-}" ]; then
+                echo "[cleanup] $(date): trigger=$trigger bypass=growth recent_count=${CCMEM_CLEANUP_RECENT_COUNT:-0} threshold=${CCMEM_CLEANUP_RECENT_THRESHOLD:-0} window_seconds=${CCMEM_CLEANUP_RECENT_WINDOW:-0}" >> "$DEBUG_LOG"
+            fi
+        else
+            if [ -n "${DEBUG_LOG:-}" ]; then
+                now_ts=$(date +%s 2>/dev/null || echo "0")
+                last_ts=$(cat "$state_file" 2>/dev/null || echo "0")
+                age_seconds=$((now_ts - last_ts))
+                echo "[cleanup] $(date): trigger=$trigger skipped=throttle last_run=$last_ts age_seconds=$age_seconds" >> "$DEBUG_LOG"
+            fi
+            return 0
         fi
-        return 0
     fi
 
     if [ -n "${DEBUG_LOG:-}" ]; then
-        echo "[cleanup] $(date): trigger=$trigger mode=safe days=$days limit=$limit" >> "$DEBUG_LOG"
+        echo "[cleanup] $(date): trigger=$trigger mode=safe days=$days limit=$limit reason=$cleanup_reason" >> "$DEBUG_LOG"
     fi
 
     deleted_count=$(cleanup_memories "safe" "$days" "$limit" 2>/dev/null || echo "error")

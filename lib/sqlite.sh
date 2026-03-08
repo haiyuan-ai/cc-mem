@@ -46,6 +46,61 @@ strip_injected_context_blocks() {
     '
 }
 
+normalize_preview_text() {
+    local content="$1"
+    local normalized=""
+
+    normalized=$(printf "%s" "$content" | tr '\r\n\t' '   ' | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//')
+    printf "%s" "$normalized"
+}
+
+truncate_preview_text() {
+    local content="$1"
+    local limit="${2:-200}"
+
+    if [ "${#content}" -le "$limit" ]; then
+        printf "%s" "$content"
+    else
+        printf "%s..." "${content:0:$limit}"
+    fi
+}
+
+extract_signature_preview() {
+    local content="$1"
+    local signatures=""
+
+    signatures=$(printf "%s\n" "$content" | grep -Eim 12 '^\[FILE_CHANGE\]|^\[BASH\]|error|errors|fail|failed|bug|fix|fixed|resolved|workaround|https?://|v[0-9]+(\.[0-9]+)*|version|trace|root cause' || true)
+    if [ -z "$signatures" ]; then
+        signatures="$content"
+    fi
+
+    normalize_preview_text "$signatures"
+}
+
+generate_content_preview() {
+    local content="$1"
+    local memory_kind="$2"
+    local normalized=""
+    local preview=""
+
+    normalized=$(normalize_preview_text "$content")
+
+    case "$memory_kind" in
+        durable)
+            preview=$(truncate_preview_text "$normalized" 320)
+            ;;
+        temporary)
+            preview=$(extract_signature_preview "$content")
+            preview=$(truncate_preview_text "$preview" 180)
+            ;;
+        working|*)
+            preview=$(truncate_preview_text "$normalized" 220)
+            ;;
+    esac
+
+    printf "%s" "$preview"
+}
+
 # 解析稳定的项目根路径，优先使用 git root。
 resolve_project_root() {
     local project_path="$1"
@@ -358,7 +413,7 @@ store_memory() {
 
     local id=$(generate_id)
     local epoch=$(generate_epoch_timestamp)
-    local content_preview="${content:0:200}"
+    local content_preview=""
     local content_hash=$(generate_content_hash "$content" "$category")
     local id_escaped
     local session_id_escaped
@@ -398,6 +453,8 @@ store_memory() {
     if [ -z "$expires_at" ]; then
         expires_at=$(infer_expires_at "$source" "$memory_kind")
     fi
+
+    content_preview=$(generate_content_preview "$content" "$memory_kind")
 
     if [ -z "$classification_source" ] && [ "$source" = "manual" ]; then
         classification_source="manual"

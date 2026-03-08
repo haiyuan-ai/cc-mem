@@ -168,6 +168,22 @@ test_classify_memory_pattern() {
     assert_contains "$result" "pattern|" "约定和规范应该分类为 pattern"
 }
 
+it "可复用的用户 prompt 应优先分类为 pattern 或 decision"
+test_classify_reusable_user_prompt() {
+    local result
+    result=$(classify_memory "user_prompt_submit" "不要单独引入 queue-status，统一放进 status 里" "不要单独引入 queue-status，统一放进 status 里" "user-prompt,reusable" "user-preference")
+
+    assert_true "[[ \"$result\" == pattern\\|* || \"$result\" == decision\\|* ]]" "可复用 prompt 应归入 pattern 或 decision"
+}
+
+it "带修复与验证信号的 tool 输出应优先分类为 solution"
+test_classify_post_tool_use_solution_signal() {
+    local result
+    result=$(classify_memory "post_tool_use" "" "[BASH] npm test: 3 passed, 0 failed\n[FILE_CHANGE] src/app.js: 修复注入策略并补充测试" "auto-captured" "what-changed")
+
+    assert_contains "$result" "solution|" "带修复与验证信号的 tool 输出应分类为 solution"
+}
+
 it "自动分类应返回置信度和原因"
 test_classify_memory_confidence_and_reason() {
     local confidence
@@ -947,6 +963,8 @@ test_classify_memory_decision
 test_classify_memory_solution
 test_classify_memory_debug
 test_classify_memory_pattern
+test_classify_reusable_user_prompt
+test_classify_post_tool_use_solution_signal
 test_classify_memory_confidence_and_reason
 test_infer_policy_with_confidence
 test_infer_policy_low_confidence_context

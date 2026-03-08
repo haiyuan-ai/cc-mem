@@ -4,7 +4,7 @@ HOOK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HOOK_UTILS_DIR/classification.sh"
 source "$HOOK_UTILS_DIR/memory_policy.sh"
 
-CLASSIFICATION_RULE_VERSION="rule-v1"
+CLASSIFICATION_RULE_VERSION="rule-v2"
 
 hook_log() {
     local hook_name="$1"
@@ -181,4 +181,28 @@ queue_failed_capture_log() {
     hook_log "$hook_name" "queued failed capture log to $queued_path"
     printf '%s\n' "$queued_path"
     return 0
+}
+
+build_reusable_prompt_summary() {
+    local prompt="$1"
+    local compact_length=0
+
+    compact_length=$(printf "%s" "$prompt" | tr -d '[:space:]' | wc -c | tr -d ' ')
+    if [ "$compact_length" -le 8 ]; then
+        return
+    fi
+
+    if is_ephemeral_user_prompt "$prompt"; then
+        return
+    fi
+
+    if ! classification_matches "$prompt" '不要|别|统一|默认|优先|改成|改为|放进|保留|避免|以后|先.+再|决定|采用|选用|方案|规则|约束|偏好|命名|风格|节奏|顺序'; then
+        return
+    fi
+
+    if [ "${#prompt}" -gt 120 ]; then
+        printf '%s...\n' "${prompt:0:120}"
+    else
+        printf '%s\n' "$prompt"
+    fi
 }

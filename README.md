@@ -40,6 +40,8 @@ Claude Code 轻量级记忆管理系统
 - **自动裁剪**：Stop / SessionEnd 会对超长回复和日志做本地裁剪
 - **预览压缩**：`content_preview` 会按 `durable / working / temporary` 分层生成，兼顾保真度与存储效率
 - **规则分类**：自动采集路径共享同一套本地分类器，生成类别、置信度与原因，并参与分层决策
+- **Prompt 复用判断**：`user_prompt_submit` 会优先提取可复用的偏好、约束、规则和决策，跳过一次性确认语
+- **Tool 信号提炼**：`post_tool_use` 更偏向提炼错误、修复、验证和文件变更信号，而不是把整段输出都提升为记忆
 - **持久化存储**：SQLite 本地数据库
 - **分层检索**：支持 FTS、中文 fallback、timeline、related project recall
 - **失败兜底**：hooks 写库失败时会把原始日志转入本地待处理队列，避免直接丢失
@@ -773,6 +775,12 @@ ccmem-cli.sh capture -t "important,architecture,database"
 - `category`
 - `confidence`
 - `reason`
+
+来源侧的当前策略：
+
+- `user_prompt_submit`：优先识别可复用的偏好、约束、规则、决策；短确认语和一次性推进语默认降级
+- `post_tool_use`：优先提炼错误、修复、验证、文件变更等关键信号；普通成功输出和环境噪音默认保持低优先级
+- `stop_summary`：优先保留结果总结和决策取舍
 
 这些结果会写入 debug log，便于排查为什么某条自动记忆被归类为 `debug`、`solution`、`decision`、`pattern` 或 `context`。
 

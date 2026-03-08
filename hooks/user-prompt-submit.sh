@@ -29,6 +29,48 @@ if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
 fi
 hook_log "user-prompt-submit" "USER_PROMPT length=${#USER_PROMPT}"
 
+if [ -n "$USER_PROMPT" ]; then
+    prompt_summary=""
+    prompt_summary=$(build_reusable_prompt_summary "$USER_PROMPT")
+    if [ -n "$prompt_summary" ]; then
+        prompt_classification_result=""
+        prompt_classification_result=$(hook_classify_memory "user-prompt-submit" "user_prompt_submit" "$USER_PROMPT" "$USER_PROMPT" "user-prompt,reusable" "user-preference")
+        PROMPT_CATEGORY=$(printf "%s\n" "$prompt_classification_result" | cut -d'|' -f1)
+        PROMPT_CONFIDENCE=$(printf "%s\n" "$prompt_classification_result" | cut -d'|' -f2)
+        PROMPT_REASON=$(printf "%s\n" "$prompt_classification_result" | cut -d'|' -f3-)
+
+        if [ "$PROMPT_CATEGORY" != "context" ] && [ "${PROMPT_CONFIDENCE:-0}" -ge 70 ]; then
+            prompt_policy_result=$(hook_classification_policy "user-prompt-submit" "user_prompt_submit" "$PROMPT_CATEGORY" "$PROMPT_CONFIDENCE")
+            PROMPT_MEMORY_KIND=$(printf "%s\n" "$prompt_policy_result" | cut -d'|' -f1)
+            PROMPT_AUTO_INJECT_POLICY=$(printf "%s\n" "$prompt_policy_result" | cut -d'|' -f2)
+
+            if printf "%s" "$USER_PROMPT" | "$CLI" capture \
+                -p "$PROJECT_PATH" \
+                -c "$PROMPT_CATEGORY" \
+                -s "$SESSION_ID" \
+                -t "auto-captured,user-prompt,reusable" \
+                -m "$prompt_summary" \
+                --concepts "user-preference" \
+                --source "user_prompt_submit" \
+                --memory-kind "$PROMPT_MEMORY_KIND" \
+                --inject-policy "$PROMPT_AUTO_INJECT_POLICY" \
+                --classification-confidence "$PROMPT_CONFIDENCE" \
+                --classification-reason "$PROMPT_REASON" \
+                --classification-source "rule" \
+                --classification-version "$CLASSIFICATION_RULE_VERSION" \
+                >/dev/null 2>&1; then
+                hook_log "user-prompt-submit" "Reusable prompt saved"
+            else
+                hook_log "user-prompt-submit" "Reusable prompt capture failed"
+            fi
+        else
+            hook_log "user-prompt-submit" "Prompt ignored as non-reusable: category=$PROMPT_CATEGORY confidence=$PROMPT_CONFIDENCE"
+        fi
+    else
+        hook_log "user-prompt-submit" "Prompt ignored as ephemeral"
+    fi
+fi
+
 # 检查是否有累积的日志
 LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
 hook_log "user-prompt-submit" "Checking LOG_FILE=$LOG_FILE"

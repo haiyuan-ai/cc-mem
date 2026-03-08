@@ -93,6 +93,72 @@ apply_source_bias() {
     esac
 }
 
+classification_text_length() {
+    local text="$1"
+    printf "%s" "$text" | tr -d '[:space:]' | wc -c | tr -d ' '
+}
+
+is_ephemeral_user_prompt() {
+    local text="$1"
+    local compact_length=0
+
+    compact_length=$(classification_text_length "$text")
+    if [ "$compact_length" -le 6 ]; then
+        return 0
+    fi
+
+    classification_matches "$text" '^(可以|好|好的|继续|继续吧|开始吧|修复吧|提交并 ?push|push|commit|ok|okay|yes|no|行|先这样|先这样吧)[[:space:][:punct:]]*$'
+}
+
+apply_source_specific_scores() {
+    local source="$1"
+    local summary="$2"
+    local content="$3"
+    local combined="$summary $content"
+
+    case "$source" in
+        user_prompt_submit)
+            if [ -n "$summary" ] && is_ephemeral_user_prompt "$summary"; then
+                classification_add_score context_score context_reason 4 "ephemeral prompt"
+            fi
+
+            if [ -n "$summary" ] && classification_matches "$summary" '不要|别|统一|默认|优先|改成|改为|放进|保留|避免|以后|先.+再|不要单独|按.+处理|命名|风格|约束|规则|偏好'; then
+                classification_add_score pattern_score pattern_reason 6 "reusable prompt pattern"
+            fi
+
+            if [ -n "$summary" ] && classification_matches "$summary" '决定|采用|选用|改为|先.+再|不再|方案|节奏|顺序|流程'; then
+                classification_add_score decision_score decision_reason 5 "reusable prompt decision"
+            fi
+            ;;
+        post_tool_use)
+            if classification_matches "$combined" '\[BASH\].*(error|errors|failed|fail|not found|permission denied|syntax error)|报错|失败|异常'; then
+                classification_add_score debug_score debug_reason 5 "tool error signal"
+            fi
+
+            if classification_matches "$combined" '(\[FILE_CHANGE\].*(fix|fixed|修复|调整|改为|支持|优化|refactor|避免)|修复|解决|implemented|updated|added|回退|workaround)'; then
+                classification_add_score solution_score solution_reason 5 "tool fix signal"
+            fi
+
+            if classification_matches "$combined" '(test|tests|lint|build).*(passed|pass|succeeded|ok)|([0-9]+ passed, 0 failed)|测试通过|构建成功|验证通过'; then
+                classification_add_score solution_score solution_reason 4 "tool verification signal"
+            fi
+
+            if classification_matches "$combined" '\[FILE_CHANGE\].*(统一|约定|规范|命名|structure|convention|pattern|best practice)'; then
+                classification_add_score pattern_score pattern_reason 4 "tool pattern signal"
+            fi
+            ;;
+        stop_summary)
+            if classification_matches "$combined" '决定|改为|不再|原因|取舍|trade-?off|方案'; then
+                classification_add_score decision_score decision_reason 4 "stop summary decision signal"
+            fi
+
+            if classification_matches "$combined" '已修复|已完成|实现了|增加了|支持|处理了|测试通过|验证通过'; then
+                classification_add_score solution_score solution_reason 4 "stop summary outcome signal"
+            fi
+            ;;
+    esac
+}
+
 apply_tag_and_concept_scores() {
     local tags="$1"
     local concepts="$2"
@@ -170,6 +236,7 @@ classify_memory() {
     apply_keyword_scores "$summary" 2
     apply_keyword_scores "$content" 1
     apply_tag_and_concept_scores "$tags" "$concepts"
+    apply_source_specific_scores "$source" "$summary" "$content"
 
     if classification_matches "$content $summary" '^(?:\[FILE_CHANGE\]|\[BASH\])' ; then
         classification_add_score context_score context_reason 1 "operation log shape"

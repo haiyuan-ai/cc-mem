@@ -402,7 +402,7 @@ EOF
 
     local classification_snapshot
     classification_snapshot=$(db_query "SELECT classification_confidence || '|' || classification_source || '|' || classification_version FROM memories WHERE source='user_prompt_submit' ORDER BY rowid DESC LIMIT 1;")
-    assert_contains "$classification_snapshot" "|rule|rule-v1" "user-prompt-submit 应保存规则分类快照"
+    assert_contains "$classification_snapshot" "|rule|rule-v2" "user-prompt-submit 应保存规则分类快照"
 
     local classification_log
     classification_log=$(grep "CLASSIFICATION_SOURCE=rule" /tmp/ccmem_debug.log 2>/dev/null | grep "CATEGORY=debug" || true)
@@ -410,6 +410,43 @@ EOF
     assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' /tmp/ccmem_debug.log 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
 
     rm -rf "$test_dir" "$log_file"
+    cleanup_hooks_test
+}
+
+it "可复用用户 prompt 应单独保存为记忆"
+test_user_prompt_submit_saves_reusable_prompt() {
+    setup_hooks_test
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_prompt_reusable")
+
+    local input
+    input=$(make_hook_input "$test_dir" "\"prompt\": \"不要单独引入 queue-status，统一放进 status 中扩展\"")
+    echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+
+    local saved_row
+    saved_row=$(db_query "SELECT category || '|' || memory_kind || '|' || auto_inject_policy || '|' || summary FROM memories WHERE source='user_prompt_submit' ORDER BY rowid DESC LIMIT 1;")
+    assert_contains "$saved_row" "status" "可复用 prompt 应保存摘要"
+    assert_true "[[ \"$saved_row\" == pattern\\|* || \"$saved_row\" == decision\\|* ]]" "可复用 prompt 应归入 pattern 或 decision"
+
+    rm -rf "$test_dir"
+    cleanup_hooks_test
+}
+
+it "一次性用户 prompt 不应单独保存为记忆"
+test_user_prompt_submit_skips_ephemeral_prompt() {
+    setup_hooks_test
+    local test_dir
+    test_dir=$(create_test_dir "ccmem_prompt_ephemeral")
+
+    local input
+    input=$(make_hook_input "$test_dir" "\"prompt\": \"可以\"")
+    echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+
+    local saved_count
+    saved_count=$(db_query "SELECT COUNT(*) FROM memories WHERE source='user_prompt_submit' AND content='可以';")
+    assert_equals "0" "$saved_count" "一次性 prompt 不应单独保存"
+
+    rm -rf "$test_dir"
     cleanup_hooks_test
 }
 
@@ -699,7 +736,7 @@ EOF
 
     local classification_snapshot
     classification_snapshot=$(db_query "SELECT classification_confidence || '|' || classification_source || '|' || classification_version FROM memories WHERE source='session_end' ORDER BY rowid DESC LIMIT 1;")
-    assert_contains "$classification_snapshot" "|rule|rule-v1" "session-end 应保存规则分类快照"
+    assert_contains "$classification_snapshot" "|rule|rule-v2" "session-end 应保存规则分类快照"
 
     local classification_log
     classification_log=$(grep "CLASSIFICATION_SOURCE=rule" /tmp/ccmem_debug.log 2>/dev/null | grep "CATEGORY=solution" || true)
@@ -919,6 +956,8 @@ test_user_prompt_submit_queues_log_on_capture_failure
 test_session_start_outputs_context_block
 test_user_prompt_submit_outputs_recall_context
 test_user_prompt_submit_uses_rule_classification
+test_user_prompt_submit_saves_reusable_prompt
+test_user_prompt_submit_skips_ephemeral_prompt
 
 # Stop Hook 功能测试
 test_stop_extract_last_message

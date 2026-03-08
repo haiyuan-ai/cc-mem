@@ -13,7 +13,7 @@ get_recent_project_memories() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -174,7 +174,7 @@ select_sessionstart_memories() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    candidates=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -233,7 +233,7 @@ select_related_sessionstart_memories() {
 
     related_root_escaped=$(sql_escape "$related_root")
 
-    candidates=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    candidates=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$related_root_escaped'
@@ -280,7 +280,7 @@ get_last_stop_summary() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 SELECT summary FROM sessions
 WHERE (project_root = '$project_root_escaped'
    OR project_path = '$(sql_escape "$project_path")'
@@ -302,7 +302,7 @@ get_timeline_hint_candidates() {
     project_root=$(resolve_project_root "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT $(memory_display_timestamp_sql) AS timestamp, category, summary
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -369,7 +369,7 @@ query_recall_memories_for_root() {
     query_escaped=$(sql_escape "$query")
 
     if contains_cjk "$query"; then
-        sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+        sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -388,7 +388,7 @@ EOF
         return
     fi
 
-    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, concepts, source, memory_kind, auto_inject_policy, timestamp_epoch, project_root, classification_confidence, content
 FROM memories
 WHERE project_root = '$project_root_escaped'
@@ -438,7 +438,7 @@ select_query_recall_memories() {
 generate_query_recall_context() {
     local project_path="$1"
     local query="$2"
-    local limit="${3:-3}"
+    local limit="${3:-$(get_injection_recall_limit)}"
     local recall_memories
 
     recall_memories=$(select_query_recall_memories "$project_path" "$query" "$limit")
@@ -463,7 +463,7 @@ generate_query_recall_context() {
 
 generate_injection_context() {
     local project_path="$1"
-    local limit="${2:-3}"
+    local limit="${2:-$(get_injection_session_start_limit)}"
 
     if [ -z "$project_path" ]; then
         project_path="$(pwd)"
@@ -475,7 +475,7 @@ generate_injection_context() {
     local high_value_memories
     high_value_memories=$(select_sessionstart_memories "$project_path" "$limit")
     local related_memories
-    related_memories=$(select_related_sessionstart_memories "$project_path" 1)
+    related_memories=$(select_related_sessionstart_memories "$project_path" "$(get_injection_related_project_limit)")
     local last_session
     last_session=$(get_last_stop_summary "$project_path")
 

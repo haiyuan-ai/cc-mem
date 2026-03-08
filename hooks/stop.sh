@@ -9,11 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 
-# 调试日志文件
-DEBUG_LOG="/tmp/ccmem_debug.log"
-echo "[stop] $(date): START" >> "$DEBUG_LOG"
-
 source "$PLUGIN_DIR/lib/hook_utils.sh"
+echo "[stop] $(date): START" >> "$CCMEM_DEBUG_LOG"
 
 # 从 stdin 读取 hook 输入（JSON 格式）
 INPUT=$(cat)
@@ -125,15 +122,15 @@ generate_session_summary() {
 
 # 主逻辑
 main() {
-    echo "[stop] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$DEBUG_LOG"
+    echo "[stop] $(date): PROJECT_PATH=$PROJECT_PATH" >> "$CCMEM_DEBUG_LOG"
 
     # 从 transcript 提取最后一条助手消息
     local last_assistant_message=""
     if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
         last_assistant_message=$(extract_last_assistant_message "$TRANSCRIPT_PATH")
-        echo "[stop] $(date): Extracted last assistant message, length=${#last_assistant_message}" >> "$DEBUG_LOG"
+        echo "[stop] $(date): Extracted last assistant message, length=${#last_assistant_message}" >> "$CCMEM_DEBUG_LOG"
     else
-        echo "[stop] $(date): No transcript path available" >> "$DEBUG_LOG"
+        echo "[stop] $(date): No transcript path available" >> "$CCMEM_DEBUG_LOG"
     fi
 
     # 检查操作日志
@@ -141,16 +138,16 @@ main() {
     local operation_log=""
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         operation_log=$(cat "$LOG_FILE")
-        echo "[stop] $(date): Found operation log, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#operation_log}" >> "$DEBUG_LOG"
+        echo "[stop] $(date): Found operation log, lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0"), length=${#operation_log}" >> "$CCMEM_DEBUG_LOG"
         if should_condense_operation_log "$operation_log"; then
             operation_log=$(summarize_operation_log "$operation_log")
-            echo "[stop] $(date): Condensed long operation log before capture" >> "$DEBUG_LOG"
+            echo "[stop] $(date): Condensed long operation log before capture" >> "$CCMEM_DEBUG_LOG"
         fi
     fi
 
     # 生成会话摘要
     local session_summary=$(generate_session_summary "$last_assistant_message" "$operation_log")
-    echo "[stop] $(date): Generated summary: $session_summary" >> "$DEBUG_LOG"
+    echo "[stop] $(date): Generated summary: $session_summary" >> "$CCMEM_DEBUG_LOG"
 
     # 更新会话记录（使用 stop 状态，与 completed 区分）
     local msg_count=0
@@ -159,7 +156,7 @@ main() {
     fi
 
     # 更新会话（标记为 stopped 状态）
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 UPDATE sessions
 SET end_time = CURRENT_TIMESTAMP,
     message_count = $msg_count,
@@ -167,7 +164,7 @@ SET end_time = CURRENT_TIMESTAMP,
     status = 'stopped'
 WHERE id = '$SESSION_ID';
 EOF
-    echo "[stop] $(date): Updated session record with stopped status" >> "$DEBUG_LOG"
+    echo "[stop] $(date): Updated session record with stopped status" >> "$CCMEM_DEBUG_LOG"
 
     # 捕获操作日志中的记忆（如果有）
     if [ -n "$operation_log" ]; then
@@ -196,16 +193,16 @@ EOF
             --concepts "what-changed" \
             2>/dev/null; then
             > "$LOG_FILE"
-            echo "[stop] $(date): Buffered log cleared after stop_summary capture" >> "$DEBUG_LOG"
+            echo "[stop] $(date): Buffered log cleared after stop_summary capture" >> "$CCMEM_DEBUG_LOG"
             echo "[CC-Mem] 已保存停止时的记忆：$SESSION_ID"
-            echo "[stop] $(date): Memory saved from operation log" >> "$DEBUG_LOG"
+            echo "[stop] $(date): Memory saved from operation log" >> "$CCMEM_DEBUG_LOG"
         else
             local queued_path=""
             queued_path=$(queue_failed_capture_log "stop" "$SESSION_ID" "$LOG_FILE" "capture_failed" || true)
             if [ -n "$queued_path" ]; then
-                echo "[stop] $(date): Capture failed, buffered log moved to queue: $queued_path" >> "$DEBUG_LOG"
+                echo "[stop] $(date): Capture failed, buffered log moved to queue: $queued_path" >> "$CCMEM_DEBUG_LOG"
             else
-                echo "[stop] $(date): Capture failed and queue fallback failed, keeping buffered log" >> "$DEBUG_LOG"
+                echo "[stop] $(date): Capture failed and queue fallback failed, keeping buffered log" >> "$CCMEM_DEBUG_LOG"
             fi
             echo "[CC-Mem] 停止记忆保存失败，已入队待重试：$SESSION_ID"
         fi
@@ -223,7 +220,7 @@ EOF
         # 长回复进行结果导向裁剪，避免直接硬截断。
         if [ "${#filtered_message}" -gt 800 ]; then
             filtered_message=$(condense_final_response "$filtered_message" 1200)
-            echo "[stop] $(date): Final assistant message condensed to length=${#filtered_message}" >> "$DEBUG_LOG"
+            echo "[stop] $(date): Final assistant message condensed to length=${#filtered_message}" >> "$CCMEM_DEBUG_LOG"
         fi
 
         # 保存为记忆
@@ -238,22 +235,22 @@ EOF
             --concepts "what-changed" \
             2>/dev/null; then
             rm -f "$final_response_log"
-            echo "[stop] $(date): Saved final assistant message as memory" >> "$DEBUG_LOG"
+            echo "[stop] $(date): Saved final assistant message as memory" >> "$CCMEM_DEBUG_LOG"
         else
             local final_response_queue=""
             final_response_queue=$(queue_failed_capture_log "stop-final-response" "$SESSION_ID" "$final_response_log" "capture_failed" || true)
             if [ -n "$final_response_queue" ]; then
-                echo "[stop] $(date): Final response capture failed, queued at: $final_response_queue" >> "$DEBUG_LOG"
+                echo "[stop] $(date): Final response capture failed, queued at: $final_response_queue" >> "$CCMEM_DEBUG_LOG"
             else
-                echo "[stop] $(date): Final response capture failed and queue fallback failed" >> "$DEBUG_LOG"
+                echo "[stop] $(date): Final response capture failed and queue fallback failed" >> "$CCMEM_DEBUG_LOG"
             fi
         fi
     fi
 
-    run_opportunistic_cleanup "stop" 30 50 43200 "$PROJECT_PATH" || true
+    run_opportunistic_cleanup "stop" 30 50 "$(get_cleanup_throttle_seconds)" "$PROJECT_PATH" || true
 
     echo "[CC-Mem] 会话已停止：$SESSION_ID"
-    echo "[stop] $(date): END" >> "$DEBUG_LOG"
+    echo "[stop] $(date): END" >> "$CCMEM_DEBUG_LOG"
 }
 
 # 执行主逻辑

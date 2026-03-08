@@ -1,0 +1,111 @@
+#!/bin/bash
+
+CONFIG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CCMEM_ROOT_DIR="$(cd "$CONFIG_LIB_DIR/.." && pwd)"
+CCMEM_DEFAULT_CONFIG_FILE="$CCMEM_ROOT_DIR/config/config.json"
+
+expand_config_path() {
+    local path="$1"
+
+    case "$path" in
+        "~") printf '%s\n' "$HOME" ;;
+        "~/"*) printf '%s/%s\n' "$HOME" "${path#~/}" ;;
+        *) printf '%s\n' "$path" ;;
+    esac
+}
+
+get_config_file_path() {
+    printf '%s\n' "${CCMEM_CONFIG_FILE:-$CCMEM_DEFAULT_CONFIG_FILE}"
+}
+
+config_get() {
+    local key="$1"
+    local default_value="${2:-}"
+    local config_file=""
+    local value=""
+
+    config_file=$(get_config_file_path)
+    if [ ! -f "$config_file" ] || ! command -v jq >/dev/null 2>&1; then
+        printf '%s\n' "$default_value"
+        return
+    fi
+
+    value=$(jq -r ".$key // empty" "$config_file" 2>/dev/null || true)
+    if [ -n "$value" ] && [ "$value" != "null" ]; then
+        printf '%s\n' "$value"
+    else
+        printf '%s\n' "$default_value"
+    fi
+}
+
+config_get_path() {
+    local key="$1"
+    local default_value="${2:-}"
+    expand_config_path "$(config_get "$key" "$default_value")"
+}
+
+get_memory_db_path() {
+    config_get_path "memory_db" "$HOME/.claude/cc-mem/memory.db"
+}
+
+get_failed_queue_dir() {
+    config_get_path "failed_queue_dir" "/tmp/ccmem_failed_queue"
+}
+
+get_debug_log_path_runtime() {
+    config_get_path "debug_log" "/tmp/ccmem_debug.log"
+}
+
+get_markdown_export_path() {
+    config_get_path "memory.markdown_export_path" "$HOME/cc-mem-export"
+}
+
+get_cleanup_throttle_seconds() {
+    config_get "cleanup.throttle_seconds" "43200"
+}
+
+get_cleanup_growth_threshold() {
+    config_get "cleanup.growth_threshold" "100"
+}
+
+get_cleanup_growth_window_seconds() {
+    config_get "cleanup.growth_window_seconds" "3600"
+}
+
+get_injection_session_start_limit() {
+    config_get "injection.session_start_limit" "3"
+}
+
+get_injection_recall_limit() {
+    config_get "injection.recall_limit" "3"
+}
+
+get_injection_related_project_limit() {
+    config_get "injection.related_project_limit" "1"
+}
+
+get_post_tool_use_flush_lines() {
+    config_get "hooks.post_tool_use_flush_lines" "3"
+}
+
+get_preview_limit_for_kind() {
+    local memory_kind="$1"
+
+    case "$memory_kind" in
+        durable)
+            config_get "preview.durable_max_chars" "320"
+            ;;
+        temporary)
+            config_get "preview.temporary_max_chars" "180"
+            ;;
+        working|*)
+            config_get "preview.working_max_chars" "220"
+            ;;
+    esac
+}
+
+apply_runtime_config() {
+    export CCMEM_MEMORY_DB="$(get_memory_db_path)"
+    export CCMEM_FAILED_QUEUE_DIR="$(get_failed_queue_dir)"
+    export CCMEM_DEBUG_LOG="$(get_debug_log_path_runtime)"
+}

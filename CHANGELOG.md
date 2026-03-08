@@ -45,25 +45,6 @@
 - `user_prompt_submit` 新增可复用性判断，只对可复用的偏好、约束、规则、决策额外落库
 - `post_tool_use` / `stop_summary` 新增来源侧规则，优先提炼错误、修复、验证、变更和决策信号
 
-### 🧪 Testing
-
-- 新增 `tests/test_mcp.sh`
-- 新增 `tests/test_extensions.sh`
-- MCP smoke test 覆盖：
-  - `initialize`
-  - `tools/list`
-  - `ccmem_capture`
-  - `ccmem_recall`
-- 扩展 smoke test 覆盖：
-  - OpenCode 扩展目录结构
-  - 插件入口 hook 契约
-- CLI 新增 `recall` 命令回归测试
-- CLI 新增 `stats` 命令回归测试
-- 新增 hooks 失败入队测试，覆盖 `post-tool-use` / `stop` / `session-end`
-- 新增 `content_preview` 分层压缩测试，覆盖 `durable` / `working` / `temporary`
-- 新增 cleanup 增长速率绕过节流测试
-- 新增可复用 prompt 与来源侧分类规则回归测试
-
 ## [1.5.1] - 2026-03-07
 
 ### ✨ Major Improvements

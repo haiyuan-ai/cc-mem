@@ -62,12 +62,23 @@ test_status_shows_session_count() {
 it "应该显示失败队列摘要"
 test_status_shows_failed_queue_summary() {
     local queue_dir="/tmp/ccmem_failed_cli_$$"
+    local config_file="$CCMEM_CONFIG_FILE"
     rm -rf "$queue_dir"
     mkdir -p "$queue_dir"
     printf "# hook=user-prompt-submit session_id=test reason=capture_failed queued_at=2026-03-08T00:00:00Z\npayload\n" > "$queue_dir/failed_user-prompt-submit_test_abc.log"
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["failed_queue_dir"] = "$queue_dir"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
 
     local result
-    result=$(CCMEM_FAILED_QUEUE_DIR="$queue_dir" "$CLI" status 2>&1)
+    result=$("$CLI" status 2>&1)
 
     assert_contains "$result" "失败队列" "应该显示失败队列区块"
     assert_contains "$result" "文件数：1" "应该显示失败文件数量"
@@ -79,13 +90,24 @@ test_status_shows_failed_queue_summary() {
 it "应该显示最近 cleanup 摘要"
 test_status_shows_recent_cleanup_summary() {
     local debug_log="/tmp/ccmem_debug_cli_$$.log"
+    local config_file="$CCMEM_CONFIG_FILE"
     cat > "$debug_log" <<'EOF'
 [cleanup] Sun Mar  8 13:00:00 CST 2026: trigger=session-end mode=safe days=30 limit=50 reason=growth
 [cleanup] Sun Mar  8 13:00:00 CST 2026: trigger=session-end deleted=3 scope=temporary never/manual_only
 EOF
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["debug_log"] = "$debug_log"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
 
     local result
-    result=$(DEBUG_LOG="$debug_log" "$CLI" status 2>&1)
+    result=$("$CLI" status 2>&1)
 
     assert_contains "$result" "最近 Cleanup" "应该显示 cleanup 摘要区块"
     assert_contains "$result" "mode=safe" "应该显示最近 cleanup 触发信息"
@@ -112,6 +134,33 @@ test_stats_shows_summary() {
     assert_contains "$result" "总览" "应该显示总览区块"
     assert_contains "$result" "Preview 占比" "应该显示 preview 压缩占比"
     assert_contains "$result" "每日明细" "应该显示每日明细区块"
+}
+
+it "status 应支持从 config.json 读取 debug_log 路径"
+test_status_reads_debug_log_from_config() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local debug_log="/tmp/ccmem_config_debug_$$.log"
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["debug_log"] = "$debug_log"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+    cat > "$debug_log" <<'EOF'
+[cleanup] Sun Mar  8 13:00:00 CST 2026: trigger=stop mode=safe days=30 limit=50 reason=schedule
+[cleanup] Sun Mar  8 13:00:00 CST 2026: trigger=stop deleted=1 scope=temporary never/manual_only
+EOF
+
+    local result
+    result=$("$CLI" status 2>&1)
+
+    assert_contains "$result" "deleted=1" "status 应通过配置文件读取 debug_log"
+
+    rm -f "$debug_log"
 }
 
 it "stats 命令应该支持按项目过滤"

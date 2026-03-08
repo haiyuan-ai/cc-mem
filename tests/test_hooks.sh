@@ -11,29 +11,61 @@ HOOKS_DIR="$SCRIPT_DIR/hooks"
 source "$SCRIPT_DIR/tests/test_framework.sh"
 
 # 测试辅助函数
+set_hooks_runtime_config() {
+    local memory_db="${1:-$TEST_DB}"
+    local failed_queue_dir="${2:-$HOOKS_TEST_FAILED_QUEUE_DIR}"
+    local debug_log="${3:-$HOOKS_TEST_DEBUG_LOG}"
+    local growth_threshold="${4:-100}"
+    local growth_window_seconds="${5:-3600}"
+
+    python3 - <<PY
+import json
+path = "$CCMEM_CONFIG_FILE"
+with open(path) as f:
+    data = json.load(f)
+data["memory_db"] = "$memory_db"
+data["failed_queue_dir"] = "$failed_queue_dir"
+data["debug_log"] = "$debug_log"
+cleanup = data.setdefault("cleanup", {})
+cleanup["growth_threshold"] = int("$growth_threshold")
+cleanup["growth_window_seconds"] = int("$growth_window_seconds")
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+}
+
 setup_hooks_test() {
     # 设置测试会话 ID
     export TEST_SESSION_ID="test_hooks_$$"
     export CLAUDE_SESSION_ID="$TEST_SESSION_ID"
     export CCMEM_CLEANUP_STATE_FILE="/tmp/ccmem_cleanup_state_${TEST_SESSION_ID}"
-    export CCMEM_FAILED_QUEUE_DIR="/tmp/ccmem_failed_${TEST_SESSION_ID}"
+    CCMEM_FAILED_QUEUE_DIR="/tmp/ccmem_failed_${TEST_SESSION_ID}"
+    CCMEM_DEBUG_LOG="/tmp/ccmem_debug_${TEST_SESSION_ID}.log"
+    HOOKS_TEST_FAILED_QUEUE_DIR="/tmp/ccmem_failed_${TEST_SESSION_ID}"
+    HOOKS_TEST_DEBUG_LOG="/tmp/ccmem_debug_${TEST_SESSION_ID}.log"
+    set_hooks_runtime_config "$TEST_DB" "$HOOKS_TEST_FAILED_QUEUE_DIR" "$HOOKS_TEST_DEBUG_LOG" "100" "3600"
 
     # 清理可能的旧日志
     rm -f "/tmp/ccmem_${TEST_SESSION_ID}.log"
     rm -f "$CCMEM_CLEANUP_STATE_FILE"
-    rm -rf "$CCMEM_FAILED_QUEUE_DIR"
+    rm -rf "$HOOKS_TEST_FAILED_QUEUE_DIR"
+    rm -f "$HOOKS_TEST_DEBUG_LOG"
 }
 
 cleanup_hooks_test() {
     # 清理测试日志
     rm -f "/tmp/ccmem_${TEST_SESSION_ID}.log"
-    rm -f "/tmp/ccmem_debug.log"
+    rm -f "${HOOKS_TEST_DEBUG_LOG:-}"
     rm -f "${CCMEM_CLEANUP_STATE_FILE:-}"
-    rm -rf "${CCMEM_FAILED_QUEUE_DIR:-}"
+    rm -rf "${HOOKS_TEST_FAILED_QUEUE_DIR:-}"
     unset CLAUDE_SESSION_ID
     unset TEST_SESSION_ID
     unset CCMEM_CLEANUP_STATE_FILE
     unset CCMEM_FAILED_QUEUE_DIR
+    unset CCMEM_DEBUG_LOG
+    unset HOOKS_TEST_FAILED_QUEUE_DIR
+    unset HOOKS_TEST_DEBUG_LOG
 }
 
 make_hook_input() {
@@ -218,8 +250,6 @@ it "post-tool-use capture 失败时应把日志入队而不是丢弃"
 test_post_tool_use_queues_log_on_capture_failure() {
     setup_hooks_test
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
-    local old_memory_db="${MEMORY_DB:-}"
-
     cat > "$log_file" <<'EOF'
 [FILE_CHANGE] src/a.js: 修改 A
 [BASH] npm test: 运行测试
@@ -227,7 +257,9 @@ test_post_tool_use_queues_log_on_capture_failure() {
 EOF
 
     local input='{"tool_type":"Edit","tool_input":{"file_path":"src/c.js","description":"触发失败队列"}}'
-    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/post-tool-use.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "/tmp" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+    echo "$input" | bash "$HOOKS_DIR/post-tool-use.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
 
     local queued_count
     queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_post-tool-use_*" 2>/dev/null | wc -l | tr -d ' ')
@@ -243,12 +275,6 @@ EOF
     queued_content=$(cat "$queued_file" 2>/dev/null || true)
     assert_contains "$queued_content" "capture_failed" "队列日志应记录失败原因"
     assert_contains "$queued_content" "[FILE_CHANGE]" "队列日志应保留原始内容"
-
-    if [ -n "$old_memory_db" ]; then
-        export MEMORY_DB="$old_memory_db"
-    else
-        unset MEMORY_DB
-    fi
 
     rm -f "$log_file"
     cleanup_hooks_test
@@ -295,8 +321,6 @@ it "user-prompt-submit capture 失败时应把日志入队而不是丢弃"
 test_user_prompt_submit_queues_log_on_capture_failure() {
     setup_hooks_test
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
-    local old_memory_db="${MEMORY_DB:-}"
-
     cat > "$log_file" <<'EOF'
 [FILE_CHANGE] src/app.js: 修改 A
 [BASH] npm test: 调试错误
@@ -304,7 +328,9 @@ EOF
 
     local input
     input=$(make_hook_input "/tmp")
-    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "/tmp" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+    echo "$input" | bash "$HOOKS_DIR/user-prompt-submit.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
 
     local queued_count
     queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_user-prompt-submit_*" 2>/dev/null | wc -l | tr -d ' ')
@@ -320,12 +346,6 @@ EOF
     queued_content=$(cat "$queued_file" 2>/dev/null || true)
     assert_contains "$queued_content" "capture_failed" "user-prompt-submit 队列日志应记录失败原因"
     assert_contains "$queued_content" "[FILE_CHANGE]" "user-prompt-submit 队列日志应保留原始内容"
-
-    if [ -n "$old_memory_db" ]; then
-        export MEMORY_DB="$old_memory_db"
-    else
-        unset MEMORY_DB
-    fi
 
     rm -f "$log_file"
     cleanup_hooks_test
@@ -405,9 +425,9 @@ EOF
     assert_contains "$classification_snapshot" "|rule|rule-v2" "user-prompt-submit 应保存规则分类快照"
 
     local classification_log
-    classification_log=$(grep "CLASSIFICATION_SOURCE=rule" /tmp/ccmem_debug.log 2>/dev/null | grep "CATEGORY=debug" || true)
+    classification_log=$(grep "CLASSIFICATION_SOURCE=rule" "$CCMEM_DEBUG_LOG" 2>/dev/null | grep "CATEGORY=debug" || true)
     assert_contains "$classification_log" "CATEGORY=debug" "debug log 应记录规则分类结果"
-    assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' /tmp/ccmem_debug.log 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
+    assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' "$CCMEM_DEBUG_LOG" 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
 
     rm -rf "$test_dir" "$log_file"
     cleanup_hooks_test
@@ -461,7 +481,7 @@ test_stop_extract_last_message() {
     setup_hooks_test
     local test_dir
     test_dir=$(create_test_dir "ccmem_stop_test")
-    rm -f /tmp/ccmem_debug.log
+    rm -f "$CCMEM_DEBUG_LOG"
 
     # 创建模拟 transcript
     cat > "$test_dir/transcript.jsonl" << 'EOF'
@@ -480,7 +500,7 @@ EOF
     echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
 
     # 检查调试日志中是否成功提取消息
-    if grep -q "Extracted last assistant message" /tmp/ccmem_debug.log 2>/dev/null; then
+    if grep -q "Extracted last assistant message" "$CCMEM_DEBUG_LOG" 2>/dev/null; then
         assert_true "true" "应该提取到助手消息"
     else
         skip_test "调试日志不可用，跳过验证"
@@ -513,8 +533,6 @@ it "stop capture 失败时应把操作日志入队而不是丢弃"
 test_stop_queues_log_on_capture_failure() {
     setup_hooks_test
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
-    local old_memory_db="${MEMORY_DB:-}"
-
     cat > "$log_file" <<'EOF'
 [FILE_CHANGE] src/main.js: 修复 bug
 [BASH] npm test: 运行测试
@@ -522,7 +540,9 @@ EOF
 
     local input
     input=$(make_hook_input "/tmp")
-    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "/tmp" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+    echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
 
     local queued_count
     queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_stop_*" 2>/dev/null | wc -l | tr -d ' ')
@@ -539,12 +559,6 @@ EOF
     assert_contains "$queued_content" "capture_failed" "stop 队列日志应记录失败原因"
     assert_contains "$queued_content" "[FILE_CHANGE]" "stop 队列日志应保留原始内容"
 
-    if [ -n "$old_memory_db" ]; then
-        export MEMORY_DB="$old_memory_db"
-    else
-        unset MEMORY_DB
-    fi
-
     rm -f "$log_file"
     cleanup_hooks_test
 }
@@ -554,7 +568,7 @@ test_stop_generate_summary() {
     setup_hooks_test
     local test_dir
     test_dir=$(create_test_dir "ccmem_stop_summary")
-    rm -f /tmp/ccmem_debug.log
+    rm -f "$CCMEM_DEBUG_LOG"
 
     # 创建操作日志（使用真实的 FILE_CHANGE 格式）
     cat > "/tmp/ccmem_${TEST_SESSION_ID}.log" << 'EOF'
@@ -569,8 +583,8 @@ EOF
     echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
 
     # 检查摘要生成（通过调试日志）
-    if grep -q "Generated summary" /tmp/ccmem_debug.log 2>/dev/null; then
-        local summary_line=$(grep "Generated summary" /tmp/ccmem_debug.log | tail -1)
+    if grep -q "Generated summary" "$CCMEM_DEBUG_LOG" 2>/dev/null; then
+        local summary_line=$(grep "Generated summary" "$CCMEM_DEBUG_LOG" | tail -1)
         if echo "$summary_line" | grep -q "Files="; then
             assert_true "true" "应该生成包含操作统计的摘要"
         else
@@ -617,7 +631,6 @@ it "stop final response capture 失败时应把内容入队而不是丢弃"
 test_stop_final_response_queues_on_capture_failure() {
     setup_hooks_test
     local test_dir
-    local old_memory_db="${MEMORY_DB:-}"
     test_dir=$(create_test_dir "ccmem_stop_final_response_fail")
 
     cat > "$test_dir/transcript.jsonl" <<'EOF'
@@ -626,7 +639,9 @@ EOF
 
     local input
     input=$(make_hook_input "$test_dir" "\"transcript_path\": \"$test_dir/transcript.jsonl\"")
-    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "/tmp" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+    echo "$input" | bash "$HOOKS_DIR/stop.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
 
     local queued_count
     queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_stop-final-response_*" 2>/dev/null | wc -l | tr -d ' ')
@@ -638,12 +653,6 @@ EOF
     queued_content=$(cat "$queued_file" 2>/dev/null || true)
     assert_contains "$queued_content" "capture_failed" "stop final response 队列日志应记录失败原因"
     assert_contains "$queued_content" "最终回复内容：修复完成，建议继续验证。" "stop final response 队列日志应保留原始内容"
-
-    if [ -n "$old_memory_db" ]; then
-        export MEMORY_DB="$old_memory_db"
-    else
-        unset MEMORY_DB
-    fi
 
     rm -rf "$test_dir" "/tmp/ccmem_${TEST_SESSION_ID}.log" "/tmp/ccmem_${TEST_SESSION_ID}_final_response.log"
     cleanup_hooks_test
@@ -739,9 +748,9 @@ EOF
     assert_contains "$classification_snapshot" "|rule|rule-v2" "session-end 应保存规则分类快照"
 
     local classification_log
-    classification_log=$(grep "CLASSIFICATION_SOURCE=rule" /tmp/ccmem_debug.log 2>/dev/null | grep "CATEGORY=solution" || true)
+    classification_log=$(grep "CLASSIFICATION_SOURCE=rule" "$CCMEM_DEBUG_LOG" 2>/dev/null | grep "CATEGORY=solution" || true)
     assert_contains "$classification_log" "CATEGORY=solution" "debug log 应记录规则分类结果"
-    assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' /tmp/ccmem_debug.log 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
+    assert_contains "$(grep 'MEMORY_KIND=working AUTO_INJECT_POLICY=conditional' "$CCMEM_DEBUG_LOG" 2>/dev/null || true)" "AUTO_INJECT_POLICY=conditional" "debug log 应记录分层决策"
 
     rm -rf "$test_dir" "$log_file"
     cleanup_hooks_test
@@ -752,7 +761,6 @@ test_session_end_queues_log_on_capture_failure() {
     setup_hooks_test
     local test_dir
     local log_file="/tmp/ccmem_${TEST_SESSION_ID}.log"
-    local old_memory_db="${MEMORY_DB:-}"
     test_dir=$(create_test_dir "ccmem_session_end_capture_fail")
 
     cat > "$log_file" <<'EOF'
@@ -762,7 +770,9 @@ EOF
 
     local input
     input=$(make_hook_input "$test_dir")
-    echo "$input" | MEMORY_DB="/tmp" bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "/tmp" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
+    echo "$input" | bash "$HOOKS_DIR/session-end.sh" > /dev/null 2>&1 || true
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "100" "3600"
 
     local queued_count
     queued_count=$(find "$CCMEM_FAILED_QUEUE_DIR" -type f -name "failed_session-end_*" 2>/dev/null | wc -l | tr -d ' ')
@@ -779,12 +789,6 @@ EOF
     assert_contains "$queued_content" "capture_failed" "session-end 队列日志应记录失败原因"
     assert_contains "$queued_content" "[FILE_CHANGE]" "session-end 队列日志应保留原始内容"
 
-    if [ -n "$old_memory_db" ]; then
-        export MEMORY_DB="$old_memory_db"
-    else
-        unset MEMORY_DB
-    fi
-
     rm -rf "$test_dir" "$log_file"
     cleanup_hooks_test
 }
@@ -792,7 +796,7 @@ EOF
 it "session-end 应该触发机会式清理"
 test_session_end_runs_opportunistic_cleanup() {
     setup_hooks_test
-    rm -f /tmp/ccmem_debug.log
+    rm -f "$CCMEM_DEBUG_LOG"
 
     store_memory "cleanup_session_1" "/tmp/cleanup-project" "context" "低优先级旧记忆" "旧摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
 
@@ -810,7 +814,7 @@ test_session_end_runs_opportunistic_cleanup() {
     assert_equals "0" "$after_count" "session-end 应该清理过期低优先级记忆"
 
     local cleanup_log
-    cleanup_log=$(grep "\\[cleanup\\].*trigger=session-end" /tmp/ccmem_debug.log 2>/dev/null || true)
+    cleanup_log=$(grep "\\[cleanup\\].*trigger=session-end" "$CCMEM_DEBUG_LOG" 2>/dev/null || true)
     assert_contains "$cleanup_log" "deleted=" "debug log 应记录 session-end 清理结果"
 
     cleanup_hooks_test
@@ -819,7 +823,7 @@ test_session_end_runs_opportunistic_cleanup() {
 it "机会式清理应受节流限制"
 test_opportunistic_cleanup_throttled() {
     setup_hooks_test
-    rm -f /tmp/ccmem_debug.log
+    rm -f "$CCMEM_DEBUG_LOG"
 
     date +%s > "$CCMEM_CLEANUP_STATE_FILE"
     store_memory "cleanup_session_2" "/tmp/cleanup-project" "context" "节流测试记忆" "节流摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
@@ -833,7 +837,7 @@ test_opportunistic_cleanup_throttled() {
     assert_equals "1" "$remaining_count" "节流时不应执行清理"
 
     local cleanup_log
-    cleanup_log=$(grep "\\[cleanup\\].*skipped=throttle" /tmp/ccmem_debug.log 2>/dev/null || true)
+    cleanup_log=$(grep "\\[cleanup\\].*skipped=throttle" "$CCMEM_DEBUG_LOG" 2>/dev/null || true)
     assert_contains "$cleanup_log" "skipped=throttle" "debug log 应记录节流跳过"
 
     cleanup_hooks_test
@@ -842,10 +846,9 @@ test_opportunistic_cleanup_throttled() {
 it "记忆增长过快时应绕过节流执行清理"
 test_opportunistic_cleanup_bypasses_throttle_on_growth() {
     setup_hooks_test
-    rm -f /tmp/ccmem_debug.log
+    rm -f "$CCMEM_DEBUG_LOG"
 
-    export CCMEM_CLEANUP_GROWTH_THRESHOLD="2"
-    export CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS="3600"
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "2" "3600"
     date +%s > "$CCMEM_CLEANUP_STATE_FILE"
 
     store_memory "cleanup_growth_1" "/tmp/cleanup-project" "context" "增长触发记忆" "增长触发摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
@@ -859,21 +862,18 @@ test_opportunistic_cleanup_bypasses_throttle_on_growth() {
     assert_equals "0" "$remaining_count" "增长速率达到阈值时应绕过节流并执行清理"
 
     local cleanup_log
-    cleanup_log=$(grep "\\[cleanup\\].*bypass=growth" /tmp/ccmem_debug.log 2>/dev/null || true)
+    cleanup_log=$(grep "\\[cleanup\\].*bypass=growth" "$CCMEM_DEBUG_LOG" 2>/dev/null || true)
     assert_contains "$cleanup_log" "bypass=growth" "debug log 应记录增长速率绕过节流"
 
-    unset CCMEM_CLEANUP_GROWTH_THRESHOLD
-    unset CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS
     cleanup_hooks_test
 }
 
 it "其他项目的增长不应绕过当前项目的节流"
 test_opportunistic_cleanup_growth_is_project_scoped() {
     setup_hooks_test
-    rm -f /tmp/ccmem_debug.log
+    rm -f "$CCMEM_DEBUG_LOG"
 
-    export CCMEM_CLEANUP_GROWTH_THRESHOLD="2"
-    export CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS="3600"
+    set_hooks_runtime_config "$TEST_DB" "$CCMEM_FAILED_QUEUE_DIR" "$CCMEM_DEBUG_LOG" "2" "3600"
     date +%s > "$CCMEM_CLEANUP_STATE_FILE"
 
     store_memory "cleanup_scope_target" "/tmp/cleanup-project" "context" "当前项目旧记忆" "当前项目旧摘要" "" "" "session_end" "temporary" "never" "/tmp/cleanup-project" "2000-01-01 00:00:00" > /dev/null
@@ -888,11 +888,9 @@ test_opportunistic_cleanup_growth_is_project_scoped() {
     assert_equals "1" "$remaining_count" "其他项目增长不应触发当前项目绕过节流"
 
     local cleanup_log
-    cleanup_log=$(grep "\\[cleanup\\].*bypass=growth.*project=/tmp/cleanup-project" /tmp/ccmem_debug.log 2>/dev/null || true)
+    cleanup_log=$(grep "\\[cleanup\\].*bypass=growth.*project=/tmp/cleanup-project" "$CCMEM_DEBUG_LOG" 2>/dev/null || true)
     assert_equals "" "$cleanup_log" "debug log 不应记录跨项目增长绕过"
 
-    unset CCMEM_CLEANUP_GROWTH_THRESHOLD
-    unset CCMEM_CLEANUP_GROWTH_WINDOW_SECONDS
     cleanup_hooks_test
 }
 

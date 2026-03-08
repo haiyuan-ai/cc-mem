@@ -9,7 +9,9 @@ if [[ "$(uname -s)" == "MSYS"* ]] || [[ "$(uname -s)" == "MINGW"* ]]; then
     fi
 fi
 
-MEMORY_DB="${MEMORY_DB:-$HOME/.claude/cc-mem/memory.db}"
+SQLITE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SQLITE_LIB_DIR/config.sh"
+apply_runtime_config
 
 # 转义 SQL 字符串中的单引号。
 sql_escape() {
@@ -87,14 +89,14 @@ generate_content_preview() {
 
     case "$memory_kind" in
         durable)
-            preview=$(truncate_preview_text "$normalized" 320)
+            preview=$(truncate_preview_text "$normalized" "$(get_preview_limit_for_kind durable)")
             ;;
         temporary)
             preview=$(extract_signature_preview "$content")
-            preview=$(truncate_preview_text "$preview" 180)
+            preview=$(truncate_preview_text "$preview" "$(get_preview_limit_for_kind temporary)")
             ;;
         working|*)
-            preview=$(truncate_preview_text "$normalized" 220)
+            preview=$(truncate_preview_text "$normalized" "$(get_preview_limit_for_kind working)")
             ;;
     esac
 
@@ -145,7 +147,7 @@ memory_display_timestamp_sql() {
 }
 
 ensure_memories_runtime_objects() {
-    sqlite3 "$MEMORY_DB" <<'EOF'
+    sqlite3 "$CCMEM_MEMORY_DB" <<'EOF'
 CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
 CREATE INDEX IF NOT EXISTS idx_memories_content_hash_scope ON memories(content_hash, project_root);
 CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id);
@@ -294,7 +296,7 @@ RETRIEVE_CJK_FALLBACK_USED=0
 
 # 初始化数据库
 init_db() {
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 -- 记忆表
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
@@ -380,7 +382,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project_root ON sessions(project_root);
 
 EOF
     ensure_memories_runtime_objects
-    echo "Database initialized at $MEMORY_DB"
+    echo "Database initialized at $CCMEM_MEMORY_DB"
 }
 
 # 存储记忆
@@ -503,7 +505,7 @@ store_memory() {
     project_root_escaped=$(sql_escape "$project_root")
     expires_at_escaped=$(sql_escape "$expires_at")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 INSERT INTO memories (
     id, session_id, project_path, project_root, category, source, memory_kind,
     auto_inject_policy, expires_at, classification_confidence, classification_reason,
@@ -576,7 +578,7 @@ retrieve_memories() {
         fi
     fi
 
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags,
        CASE
            WHEN project_path = '$project_path_escaped' THEN 3
@@ -616,7 +618,7 @@ retrieve_memories_staged() {
 
     # 阶段 1: 精确匹配（项目路径 + 类别）
     if [ -n "$project_path" ] && [ -n "$category" ]; then
-        results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+        results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE project_path = '$project_path_escaped' AND category = '$category_escaped'
@@ -638,7 +640,7 @@ EOF
 
         if contains_cjk "$query"; then
             # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
-            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+            results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
@@ -650,7 +652,7 @@ EOF
             count=$(count_result_rows "$results")
             if [ "$count" -lt "$min_results" ]; then
                 RETRIEVE_CJK_FALLBACK_USED=1
-                results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+                results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
@@ -662,7 +664,7 @@ EOF
 )
             fi
         else
-            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+            results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
@@ -686,7 +688,7 @@ EOF
 
         if contains_cjk "$query"; then
             # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
-            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+            results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
@@ -697,7 +699,7 @@ EOF
             count=$(count_result_rows "$results")
             if [ "$count" -lt "$min_results" ]; then
                 RETRIEVE_CJK_FALLBACK_USED=1
-                results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+                results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
@@ -708,7 +710,7 @@ EOF
 )
             fi
         else
-            results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+            results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
@@ -726,7 +728,7 @@ EOF
 
     # 阶段 4: 仅按项目检索
     if [ -n "$project_path" ]; then
-        results=$(sqlite3 -header -column "$MEMORY_DB" <<EOF
+        results=$(sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%'
@@ -739,7 +741,7 @@ EOF
     fi
 
     # 阶段 5: 返回所有结果
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 ORDER BY timestamp_epoch DESC
@@ -753,7 +755,7 @@ get_memory() {
     local memory_id_escaped
     memory_id_escaped=$(sql_escape "$memory_id")
 
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, session_id, $(memory_display_timestamp_sql) AS timestamp, project_path, project_root, category, source, memory_kind,
        auto_inject_policy, expires_at, content, summary, concepts, tags
 FROM memories
@@ -770,7 +772,7 @@ get_timeline() {
     anchor_id_escaped=$(sql_escape "$anchor_id")
 
     # 获取锚点记忆的 epoch 时间戳
-    local anchor_epoch=$(sqlite3 "$MEMORY_DB" "SELECT timestamp_epoch FROM memories WHERE id = '$anchor_id_escaped';")
+    local anchor_epoch=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT timestamp_epoch FROM memories WHERE id = '$anchor_id_escaped';")
 
     if [ -z "$anchor_epoch" ]; then
         echo "未找到记忆：$anchor_id"
@@ -778,7 +780,7 @@ get_timeline() {
     fi
 
     # 获取锚点前后的记忆
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags,
        CASE WHEN timestamp_epoch < $anchor_epoch THEN 'before'
             WHEN timestamp_epoch > $anchor_epoch THEN 'after'
@@ -810,7 +812,7 @@ upsert_session() {
     project_path_escaped=$(sql_escape "$project_path")
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 INSERT OR REPLACE INTO sessions (id, project_path, project_root, start_time, status)
 VALUES ('$session_id_escaped', '$project_path_escaped', '$project_root_escaped', CURRENT_TIMESTAMP, 'active');
 EOF
@@ -826,7 +828,7 @@ end_session() {
     session_id_escaped=$(sql_escape "$session_id")
     summary_escaped=$(sql_escape "$summary")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 UPDATE sessions
 SET end_time = CURRENT_TIMESTAMP,
     message_count = $message_count,
@@ -848,7 +850,7 @@ update_project_access() {
     name_escaped=$(sql_escape "$name")
     tags_escaped=$(sql_escape "$tags")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 INSERT OR REPLACE INTO projects (path, name, tags, last_accessed)
 VALUES ('$project_path_escaped', '$name_escaped', '$tags_escaped', CURRENT_TIMESTAMP);
 EOF
@@ -869,7 +871,7 @@ export_to_markdown() {
     fi
 
     # 只导出有效的记忆记录（id 以 mem_开头）
-    sqlite3 -separator '|' "$MEMORY_DB" "SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, content FROM memories $where_clause AND id GLOB 'mem_*' ORDER BY timestamp_epoch DESC;" | while IFS='|' read -r id timestamp category summary tags content; do
+    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" "SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, tags, content FROM memories $where_clause AND id GLOB 'mem_*' ORDER BY timestamp_epoch DESC;" | while IFS='|' read -r id timestamp category summary tags content; do
         # 跳过空 ID
         [ -z "$id" ] && continue
 
@@ -894,7 +896,7 @@ MDEOF
 
 # 列出所有项目
 list_projects() {
-    sqlite3 -header -column "$MEMORY_DB" "
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" "
         SELECT project_path, COUNT(*) as count, datetime(MAX(timestamp_epoch), 'unixepoch', 'localtime') as last_updated
         FROM memories
         GROUP BY project_path
@@ -925,7 +927,7 @@ log_memory_event() {
     new_value_escaped=$(sql_escape "$new_value")
     session_id_escaped=$(sql_escape "$session_id")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 INSERT INTO memory_history (id, memory_id, event_type, old_value, new_value, session_id)
 VALUES ('$id_escaped', '$memory_id_escaped', '$event_type_escaped', '$old_value_escaped', '$new_value_escaped', '$session_id_escaped');
 EOF
@@ -938,7 +940,7 @@ get_memory_history() {
     local memory_id_escaped
     memory_id_escaped=$(sql_escape "$memory_id")
 
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, memory_id, event_type, old_value, new_value, datetime(timestamp, 'localtime') AS timestamp, session_id
 FROM memory_history
 WHERE memory_id = '$memory_id_escaped'
@@ -959,7 +961,7 @@ get_recent_history() {
         where_clause="WHERE m.project_path = '$project_path_escaped'"
     fi
 
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT h.id, h.memory_id, h.event_type, h.old_value, h.new_value, datetime(h.timestamp, 'localtime') AS timestamp, h.session_id, m.project_path
 FROM memory_history h
 LEFT JOIN memories m ON h.memory_id = m.id
@@ -1036,9 +1038,9 @@ check_duplicate_memory() {
     if [ -n "$project_root" ]; then
         local project_root_escaped
         project_root_escaped=$(sql_escape "$project_root")
-        sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' AND project_root = '$project_root_escaped' LIMIT 1;"
+        sqlite3 "$CCMEM_MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' AND project_root = '$project_root_escaped' LIMIT 1;"
     else
-        sqlite3 "$MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' LIMIT 1;"
+        sqlite3 "$CCMEM_MEMORY_DB" "SELECT id FROM memories WHERE content_hash = '$content_hash_escaped' LIMIT 1;"
     fi
 }
 
@@ -1080,7 +1082,7 @@ make_project_link_id() {
 }
 
 known_project_roots() {
-    sqlite3 -noheader "$MEMORY_DB" "SELECT DISTINCT project_root FROM memories WHERE project_root IS NOT NULL AND project_root != '' UNION SELECT DISTINCT project_root FROM sessions WHERE project_root IS NOT NULL AND project_root != '' ORDER BY project_root;"
+    sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT DISTINCT project_root FROM memories WHERE project_root IS NOT NULL AND project_root != '' UNION SELECT DISTINCT project_root FROM sessions WHERE project_root IS NOT NULL AND project_root != '' ORDER BY project_root;"
 }
 
 upsert_project_link() {
@@ -1106,7 +1108,7 @@ upsert_project_link() {
     type_escaped=$(sql_escape "$link_type")
     reason_escaped=$(sql_escape "$reason")
 
-    sqlite3 "$MEMORY_DB" <<EOF
+    sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 INSERT INTO project_links (
     id, source_root, target_root, link_type, strength, reason, is_manual, created_at, updated_at
 )
@@ -1146,7 +1148,7 @@ delete_project_link() {
 
     source_escaped=$(sql_escape "$source_root")
     target_escaped=$(sql_escape "$target_root")
-    sqlite3 "$MEMORY_DB" "DELETE FROM project_links WHERE source_root = '$source_escaped' AND target_root = '$target_escaped';"
+    sqlite3 "$CCMEM_MEMORY_DB" "DELETE FROM project_links WHERE source_root = '$source_escaped' AND target_root = '$target_escaped';"
 }
 
 delete_auto_project_links_for_root() {
@@ -1155,7 +1157,7 @@ delete_auto_project_links_for_root() {
 
     [ -z "$source_root" ] && return
     source_escaped=$(sql_escape "$source_root")
-    sqlite3 "$MEMORY_DB" "DELETE FROM project_links WHERE source_root = '$source_escaped' AND is_manual = 0;"
+    sqlite3 "$CCMEM_MEMORY_DB" "DELETE FROM project_links WHERE source_root = '$source_escaped' AND is_manual = 0;"
 }
 
 link_projects() {
@@ -1192,7 +1194,7 @@ list_related_projects() {
     [ -z "$project_root" ] && return
     project_root_escaped=$(sql_escape "$project_root")
 
-    sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT target_root, link_type, strength, reason, is_manual
 FROM project_links
 WHERE source_root = '$project_root_escaped'

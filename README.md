@@ -538,16 +538,6 @@ ccmem-cli.sh history -m mem_xxx
 
 ## 🔧 高级用法
 
-### 使用环境变量
-
-```bash
-# 设置默认导出目录
-export CCMEM_MARKDOWN_DIR="$HOME/notes"
-
-# 设置默认数据库路径
-export MEMORY_DB="$HOME/.config/cc-mem/memory.db"
-```
-
 ### 自动化脚本
 
 ```bash
@@ -594,14 +584,44 @@ done < notes.txt
 
 ```json
 {
+  "memory_db": "~/.claude/cc-mem/memory.db",
+  "failed_queue_dir": "/tmp/ccmem_failed_queue",
+  "debug_log": "/tmp/ccmem_debug.log",
+  "cleanup": {
+    "throttle_seconds": 43200,
+    "growth_threshold": 100,
+    "growth_window_seconds": 3600
+  },
+  "preview": {
+    "durable_max_chars": 320,
+    "working_max_chars": 220,
+    "temporary_max_chars": 180
+  },
+  "hooks": {
+    "post_tool_use_flush_lines": 3
+  },
+  "injection": {
+    "session_start_limit": 3,
+    "recall_limit": 3,
+    "related_project_limit": 1
+  },
   "memory": {
     "markdown_export_path": "~/cc-mem-export"
   }
 }
 ```
 
-当前版本实际会读取的主要是 `memory.markdown_export_path`。
-数据库路径请通过环境变量 `MEMORY_DB` 指定；`capture.*` 这类开关目前还没有接入运行逻辑。
+已接入的主要配置项：
+
+- `memory_db`
+- `failed_queue_dir`
+- `debug_log`
+- `cleanup.*`
+- `preview.*`
+- `hooks.post_tool_use_flush_lines`
+- `injection.session_start_limit`
+- `injection.recall_limit`
+- `injection.related_project_limit`
 
 ## 数据库结构
 
@@ -708,7 +728,7 @@ done < notes.txt
 - 项目链接
 - 元数据信息
 
-导出位置：由 `-o` 参数、环境变量或配置文件指定（默认：`~/cc-mem-export`）
+导出位置：由 `-o` 参数或配置文件指定（默认：`~/cc-mem-export`）
 
 ## 高级用法
 

@@ -1,16 +1,18 @@
 #!/bin/bash
 
 HOOK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HOOK_UTILS_DIR/config.sh"
 source "$HOOK_UTILS_DIR/classification.sh"
 source "$HOOK_UTILS_DIR/memory_policy.sh"
+apply_runtime_config
 
 CLASSIFICATION_RULE_VERSION="rule-v2"
 
 hook_log() {
     local hook_name="$1"
     shift
-    [ -z "${DEBUG_LOG:-}" ] && return 0
-    echo "[$hook_name] $(date): $*" >> "$DEBUG_LOG"
+    [ -z "${CCMEM_DEBUG_LOG:-}" ] && return 0
+    echo "[$hook_name] $(date): $*" >> "$CCMEM_DEBUG_LOG"
 }
 
 hook_json_get() {
@@ -135,7 +137,7 @@ hook_classification_policy() {
 }
 
 get_failed_capture_queue_dir() {
-    printf '%s\n' "${CCMEM_FAILED_QUEUE_DIR:-/tmp/ccmem_failed_queue}"
+    printf '%s\n' "${CCMEM_FAILED_QUEUE_DIR:-$(get_failed_queue_dir)}"
 }
 
 queue_failed_capture_log() {

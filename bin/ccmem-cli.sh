@@ -17,10 +17,8 @@ source "$LIB_DIR/sqlite.sh"
 source "$LIB_DIR/content_utils.sh"
 
 load_config() {
-    if [ -f "$CONFIG_DIR/config.json" ]; then
-        # 简单的 JSON 解析（仅支持基本类型）
-        CONFIG_FILE="$CONFIG_DIR/config.json"
-    fi
+    export CCMEM_CONFIG_FILE="${CCMEM_CONFIG_FILE:-$CONFIG_DIR/config.json}"
+    apply_runtime_config
 }
 
 resolve_effective_project_path() {
@@ -67,26 +65,26 @@ handle_store_memory_result() {
 }
 
 ensure_db_ready() {
-    mkdir -p "$(dirname "$MEMORY_DB")"
+    mkdir -p "$(dirname "$CCMEM_MEMORY_DB")"
 
-    if [ ! -f "$MEMORY_DB" ]; then
+    if [ ! -f "$CCMEM_MEMORY_DB" ]; then
         init_db >/dev/null 2>&1
         return
     fi
 
     local has_memories
-    has_memories=$(sqlite3 "$MEMORY_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='memories';" 2>/dev/null || true)
+    has_memories=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='memories';" 2>/dev/null || true)
     if [ "$has_memories" != "memories" ]; then
         init_db >/dev/null 2>&1
     fi
 }
 
 get_failed_capture_queue_dir() {
-    printf '%s\n' "${CCMEM_FAILED_QUEUE_DIR:-/tmp/ccmem_failed_queue}"
+    printf '%s\n' "$CCMEM_FAILED_QUEUE_DIR"
 }
 
 get_debug_log_path() {
-    printf '%s\n' "${DEBUG_LOG:-/tmp/ccmem_debug.log}"
+    printf '%s\n' "$CCMEM_DEBUG_LOG"
 }
 
 format_epoch_local() {
@@ -384,7 +382,8 @@ cmd_search() {
 cmd_recall() {
     local project_path=""
     local query=""
-    local limit=3
+    local limit
+    limit=$(get_injection_recall_limit)
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -398,7 +397,7 @@ cmd_recall() {
                 echo "选项："
                 echo "  -p, --project    项目路径（默认当前目录）"
                 echo "  -q, --query      当前请求关键词"
-                echo "  -l, --limit      recall 结果数量（默认 3）"
+                echo "  -l, --limit      recall 结果数量（默认来自配置，缺省 3）"
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;
@@ -436,7 +435,7 @@ cmd_list() {
         where_clause="WHERE project_path = '$project_path_escaped'"
     fi
 
-    sqlite3 -header -column "$MEMORY_DB" <<EOF
+    sqlite3 -header -column "$CCMEM_MEMORY_DB" <<EOF
 SELECT id, datetime(timestamp_epoch, 'unixepoch', 'localtime') AS timestamp, category, concepts, summary, project_path, tags
 FROM memories
 $where_clause
@@ -459,17 +458,9 @@ cmd_export() {
         shift
     done
 
-    # 配置优先级：命令行参数 > 环境变量 > 配置文件 > 默认值
+    # 配置优先级：命令行参数 > 配置文件 > 默认值
     if [ -z "$output_dir" ]; then
-        # 尝试从环境变量读取
-        if [ -n "$CCMEM_EXPORT_DIR" ]; then
-            output_dir="$CCMEM_EXPORT_DIR"
-        elif [ -n "$CCMEM_MARKDOWN_DIR" ]; then
-            output_dir="$CCMEM_MARKDOWN_DIR"
-        # 尝试从配置文件读取
-        elif [ -f "$CONFIG_DIR/config.json" ] && command -v jq &> /dev/null; then
-            output_dir=$(jq -r '.memory.markdown_export_path // .memory.obsidian_export_path // empty' "$CONFIG_DIR/config.json" 2>/dev/null)
-        fi
+        output_dir=$(get_markdown_export_path)
 
         # 最终默认值
         if [ -z "$output_dir" ] || [ "$output_dir" = "null" ]; then
@@ -763,19 +754,19 @@ cmd_get() {
 cmd_status() {
     echo "=== CC-Mem 状态 ==="
     echo ""
-    echo "数据库：$MEMORY_DB"
-    if [ -f "$MEMORY_DB" ]; then
-        local mem_count=$(sqlite3 "$MEMORY_DB" "SELECT COUNT(*) FROM memories;")
-        local session_count=$(sqlite3 "$MEMORY_DB" "SELECT COUNT(*) FROM sessions;")
-        local project_count=$(sqlite3 "$MEMORY_DB" "SELECT COUNT(*) FROM projects;")
+    echo "数据库：$CCMEM_MEMORY_DB"
+    if [ -f "$CCMEM_MEMORY_DB" ]; then
+        local mem_count=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT COUNT(*) FROM memories;")
+        local session_count=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT COUNT(*) FROM sessions;")
+        local project_count=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT COUNT(*) FROM projects;")
 
         # 兼容 macOS 和 Linux 的 du 命令
         local db_size=""
-        if du -h "$MEMORY_DB" &> /dev/null; then
-            db_size=$(du -h "$MEMORY_DB" | cut -f1)
-        elif du -k "$MEMORY_DB" &> /dev/null; then
+        if du -h "$CCMEM_MEMORY_DB" &> /dev/null; then
+            db_size=$(du -h "$CCMEM_MEMORY_DB" | cut -f1)
+        elif du -k "$CCMEM_MEMORY_DB" &> /dev/null; then
             # macOS 回退方案
-            local size_kb=$(du -k "$MEMORY_DB" | cut -f1)
+            local size_kb=$(du -k "$CCMEM_MEMORY_DB" | cut -f1)
             if [ "$size_kb" -lt 1024 ]; then
                 db_size="${size_kb}K"
             else
@@ -783,11 +774,11 @@ cmd_status() {
             fi
         else
             # 使用 stat 命令
-            if stat -f%z "$MEMORY_DB" &> /dev/null; then
-                local size_bytes=$(stat -f%z "$MEMORY_DB")
+            if stat -f%z "$CCMEM_MEMORY_DB" &> /dev/null; then
+                local size_bytes=$(stat -f%z "$CCMEM_MEMORY_DB")
                 db_size="$((size_bytes / 1024))K"
-            elif stat -c%s "$MEMORY_DB" &> /dev/null; then
-                local size_bytes=$(stat -c%s "$MEMORY_DB")
+            elif stat -c%s "$CCMEM_MEMORY_DB" &> /dev/null; then
+                local size_bytes=$(stat -c%s "$CCMEM_MEMORY_DB")
                 db_size="$((size_bytes / 1024))K"
             else
                 db_size="unknown"
@@ -856,7 +847,7 @@ cmd_stats() {
         where_clause="$where_clause AND project_root = '$(sql_escape "$project_root")'"
     fi
 
-    summary_row=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    summary_row=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT
   COUNT(*),
   COALESCE(SUM(LENGTH(content)), 0),
@@ -877,7 +868,7 @@ EOF
     temporary_count=$(printf "%s" "$summary_row" | cut -d'|' -f6)
     preview_ratio=$(format_ratio_percent "$preview_bytes" "$content_bytes")
 
-    daily_rows=$(sqlite3 -separator '|' "$MEMORY_DB" <<EOF
+    daily_rows=$(sqlite3 -separator '|' "$CCMEM_MEMORY_DB" <<EOF
 SELECT
   date(datetime(timestamp_epoch, 'unixepoch', 'localtime')) AS day,
   COUNT(*),
@@ -919,7 +910,8 @@ EOF
 
 cmd_inject_context() {
     local project_path=""
-    local limit=3
+    local limit
+    limit=$(get_injection_session_start_limit)
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -931,7 +923,7 @@ cmd_inject_context() {
                 echo ""
                 echo "选项："
                 echo "  -p, --project    项目路径（默认当前目录）"
-                echo "  -l, --limit      高价值记忆数量（默认 3）"
+                echo "  -l, --limit      高价值记忆数量（默认来自配置，缺省 3）"
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;

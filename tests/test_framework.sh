@@ -21,15 +21,28 @@ TESTS_SKIPPED=0
 # 测试数据库路径（使用临时数据库）
 TEST_DB_DIR="/tmp/cc-mem-test-$$"
 TEST_DB="$TEST_DB_DIR/test-memory.db"
+TEST_CONFIG_TEMPLATE="$TEST_FRAMEWORK_DIR/config.json"
+TEST_RUNTIME_CONFIG="$TEST_DB_DIR/ccmem_test_config.json"
 
 # 测试辅助函数
 setup_test_db() {
     mkdir -p "$TEST_DB_DIR"
-    export MEMORY_DB="$TEST_DB"
-    export CCMEM_EXPORT_DIR="$TEST_DB_DIR/exports"
-    export CCMEM_MARKDOWN_DIR="$TEST_DB_DIR/markdown"
-    mkdir -p "$CCMEM_EXPORT_DIR"
-    mkdir -p "$CCMEM_MARKDOWN_DIR"
+    export CCMEM_CONFIG_FILE="$TEST_RUNTIME_CONFIG"
+    mkdir -p "$TEST_DB_DIR/exports"
+    cp "$TEST_CONFIG_TEMPLATE" "$TEST_RUNTIME_CONFIG"
+    python3 - <<PY
+import json
+path = "$TEST_RUNTIME_CONFIG"
+with open(path) as f:
+    data = json.load(f)
+data["memory_db"] = "$TEST_DB"
+data["failed_queue_dir"] = "$TEST_DB_DIR/failed_queue"
+data["debug_log"] = "$TEST_DB_DIR/debug.log"
+data["memory"]["markdown_export_path"] = "$TEST_DB_DIR/exports"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
 
     # 加载 sqlite.sh 并初始化数据库（使用测试框架自身路径）
     source "$TEST_FRAMEWORK_DIR/../lib/sqlite.sh"
@@ -37,6 +50,7 @@ setup_test_db() {
 }
 
 cleanup_test_db() {
+    unset CCMEM_CONFIG_FILE
     rm -rf "$TEST_DB_DIR"
 }
 

@@ -2,14 +2,11 @@
 # UserPromptSubmit Hook - 用户提交提示时捕获上一轮对话记忆
 # 由 Claude Code hooks 系统调用
 
-# 调试日志文件
-DEBUG_LOG="/tmp/ccmem_debug.log"
-echo "[user-prompt-submit] $(date): START" >> "$DEBUG_LOG"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 source "$PLUGIN_DIR/lib/hook_utils.sh"
+echo "[user-prompt-submit] $(date): START" >> "$CCMEM_DEBUG_LOG"
 
 # 从 stdin 读取 hook 输入（JSON 格式）- 可能为空
 INPUT=$(cat)
@@ -125,7 +122,7 @@ if [ -n "$USER_PROMPT" ] && [ -f "$PLUGIN_DIR/lib/sqlite.sh" ]; then
     PROJECT_ROOT=$(resolve_hook_project_root "user-prompt-submit" "$PROJECT_PATH")
     related_preview=$(related_projects_preview "$PROJECT_ROOT")
     hook_log "user-prompt-submit" "RELATED_PROJECTS=${related_preview:-none}"
-    recall_context=$(generate_query_recall_context "$PROJECT_PATH" "$USER_PROMPT" 3 2>/dev/null || true)
+    recall_context=$(generate_query_recall_context "$PROJECT_PATH" "$USER_PROMPT" "$(get_injection_recall_limit)" 2>/dev/null || true)
     if [ -n "$recall_context" ]; then
         recall_items=""
         recall_items=$(printf "%s\n" "$recall_context" | grep -c '^- \[' 2>/dev/null || echo "0")

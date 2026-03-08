@@ -27,6 +27,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+AGENTS.md
 
 # 临时文件
 *.tmp

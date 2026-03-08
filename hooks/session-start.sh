@@ -2,14 +2,11 @@
 # Session Start Hook - 会话启动时注入记忆
 # 由 Claude Code hooks 系统调用
 
-# 调试日志文件
-DEBUG_LOG="/tmp/ccmem_debug.log"
-echo "[session-start] $(date): START" >> "$DEBUG_LOG"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 source "$PLUGIN_DIR/lib/hook_utils.sh"
+echo "[session-start] $(date): START" >> "$CCMEM_DEBUG_LOG"
 
 # 从 stdin 读取 hook 输入（JSON 格式）
 INPUT=$(cat)
@@ -38,6 +35,6 @@ fi
 if [ -f "$CLI" ]; then
     related_preview=$(related_projects_preview "$PROJECT_ROOT")
     hook_log "session-start" "RELATED_PROJECTS=${related_preview:-none}"
-    "$CLI" inject-context -p "$PROJECT_PATH" -l 3 2>/dev/null || true
+    "$CLI" inject-context -p "$PROJECT_PATH" -l "$(get_injection_session_start_limit)" 2>/dev/null || true
     hook_log "session-start" "inject-context invoked for project_root=$PROJECT_ROOT"
 fi

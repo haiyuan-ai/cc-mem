@@ -2,14 +2,11 @@
 # PostToolUse Hook - 工具使用后捕获观察记录
 # 由 Claude Code hooks 系统调用
 
-# 调试日志文件
-DEBUG_LOG="/tmp/ccmem_debug.log"
-echo "[post-tool-use] $(date): START" >> "$DEBUG_LOG"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 source "$PLUGIN_DIR/lib/hook_utils.sh"
+echo "[post-tool-use] $(date): START" >> "$CCMEM_DEBUG_LOG"
 
 # 从 stdin 读取 hook 输入（JSON 格式）
 # Claude Code 的 command hook 可能不传递 stdin
@@ -92,7 +89,7 @@ if [ -f "$LOG_FILE" ]; then
     hook_log "post-tool-use" "LOG_FILE=$LOG_FILE line_count=$LINE_COUNT"
 
     # 达到阈值时批量保存
-    if [ "$LINE_COUNT" -ge 3 ]; then
+    if [ "$LINE_COUNT" -ge "$(get_post_tool_use_flush_lines)" ]; then
         CONTENT=$(cat "$LOG_FILE")
         hook_log "post-tool-use" "Threshold reached, saving memory"
 

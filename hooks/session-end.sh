@@ -8,11 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 CLI="$PLUGIN_DIR/bin/ccmem-cli.sh"
 
-# 调试日志文件
-DEBUG_LOG="/tmp/ccmem_debug.log"
-echo "[session-end] $(date): START" >> "$DEBUG_LOG"
-
 source "$PLUGIN_DIR/lib/hook_utils.sh"
+echo "[session-end] $(date): START" >> "$CCMEM_DEBUG_LOG"
 
 # 从 stdin 读取 hook 输入（JSON 格式）
 # Claude Code 的 command hook 会传递 stdin JSON
@@ -98,7 +95,7 @@ else
     hook_log "session-end" "CLI not found at $CLI"
 fi
 
-run_opportunistic_cleanup "session-end" 30 50 43200 "$PROJECT_PATH" || true
+run_opportunistic_cleanup "session-end" 30 50 "$(get_cleanup_throttle_seconds)" "$PROJECT_PATH" || true
 
 echo "[CC-Mem] 会话已结束：$SESSION_ID"
 hook_log "session-end" "END"

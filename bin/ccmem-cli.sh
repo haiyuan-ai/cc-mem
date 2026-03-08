@@ -81,6 +81,91 @@ ensure_db_ready() {
     fi
 }
 
+get_failed_capture_queue_dir() {
+    printf '%s\n' "${CCMEM_FAILED_QUEUE_DIR:-/tmp/ccmem_failed_queue}"
+}
+
+get_debug_log_path() {
+    printf '%s\n' "${DEBUG_LOG:-/tmp/ccmem_debug.log}"
+}
+
+format_epoch_local() {
+    local epoch="$1"
+
+    if [ -z "$epoch" ] || [[ ! "$epoch" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "unknown"
+        return
+    fi
+
+    if date -r "$epoch" "+%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+        date -r "$epoch" "+%Y-%m-%d %H:%M:%S"
+    elif date -d "@$epoch" "+%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+        date -d "@$epoch" "+%Y-%m-%d %H:%M:%S"
+    else
+        printf '%s\n' "$epoch"
+    fi
+}
+
+print_failed_queue_summary() {
+    local queue_dir
+    queue_dir=$(get_failed_capture_queue_dir)
+    local total_count=0
+    local latest_epoch=0
+    local latest_time="none"
+    local hook_summary=""
+
+    echo "失败队列：$queue_dir"
+    if [ ! -d "$queue_dir" ]; then
+        echo "  状态：空"
+        return
+    fi
+
+    total_count=$(find "$queue_dir" -type f -name 'failed_*' 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$total_count" = "0" ]; then
+        echo "  状态：空"
+        return
+    fi
+
+    latest_epoch=$(find "$queue_dir" -type f -name 'failed_*' -exec stat -f '%m' {} \; 2>/dev/null | sort -nr | head -1)
+    if [ -z "$latest_epoch" ]; then
+        latest_epoch=$(find "$queue_dir" -type f -name 'failed_*' -exec stat -c '%Y' {} \; 2>/dev/null | sort -nr | head -1)
+    fi
+    latest_time=$(format_epoch_local "$latest_epoch")
+    hook_summary=$(find "$queue_dir" -type f -name 'failed_*' 2>/dev/null | sed -E 's|.*/failed_([^_]+).*|\1|' | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}' | sed 's/ $//')
+
+    echo "  文件数：$total_count"
+    echo "  最近失败：$latest_time"
+    echo "  Hook 分布：${hook_summary:-unknown}"
+}
+
+print_recent_cleanup_summary() {
+    local debug_log
+    debug_log=$(get_debug_log_path)
+    local latest_cleanup=""
+    local latest_result=""
+
+    echo "最近 Cleanup："
+    if [ ! -f "$debug_log" ]; then
+        echo "  状态：无记录"
+        return
+    fi
+
+    latest_cleanup=$(grep '\[cleanup\].*mode=' "$debug_log" 2>/dev/null | tail -1 || true)
+    latest_result=$(grep '\[cleanup\].*deleted=' "$debug_log" 2>/dev/null | tail -1 || true)
+
+    if [ -z "$latest_cleanup" ] && [ -z "$latest_result" ]; then
+        echo "  状态：无记录"
+        return
+    fi
+
+    if [ -n "$latest_cleanup" ]; then
+        echo "  最近触发：$latest_cleanup"
+    fi
+    if [ -n "$latest_result" ]; then
+        echo "  最近结果：$latest_result"
+    fi
+}
+
 show_help() {
     cat <<EOF
 CC-Mem CLI - Claude Code 记忆管理工具
@@ -700,6 +785,11 @@ cmd_status() {
     else
         echo "  状态：未初始化"
     fi
+    echo ""
+
+    print_failed_queue_summary
+    echo ""
+    print_recent_cleanup_summary
     echo ""
 
     echo "配置目录：$CONFIG_DIR"

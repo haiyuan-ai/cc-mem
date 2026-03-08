@@ -59,6 +59,41 @@ test_status_shows_session_count() {
     assert_contains "$result" "会话数量" "应该显示会话数量"
 }
 
+it "应该显示失败队列摘要"
+test_status_shows_failed_queue_summary() {
+    local queue_dir="/tmp/ccmem_failed_cli_$$"
+    rm -rf "$queue_dir"
+    mkdir -p "$queue_dir"
+    printf "# hook=user-prompt-submit session_id=test reason=capture_failed queued_at=2026-03-08T00:00:00Z\npayload\n" > "$queue_dir/failed_user-prompt-submit_test_abc.log"
+
+    local result
+    result=$(CCMEM_FAILED_QUEUE_DIR="$queue_dir" "$CLI" status 2>&1)
+
+    assert_contains "$result" "失败队列" "应该显示失败队列区块"
+    assert_contains "$result" "文件数：1" "应该显示失败文件数量"
+    assert_contains "$result" "user-prompt-submit=1" "应该显示按 hook 聚合的失败计数"
+
+    rm -rf "$queue_dir"
+}
+
+it "应该显示最近 cleanup 摘要"
+test_status_shows_recent_cleanup_summary() {
+    local debug_log="/tmp/ccmem_debug_cli_$$.log"
+    cat > "$debug_log" <<'EOF'
+[cleanup] Sun Mar  8 13:00:00 CST 2026: trigger=session-end mode=safe days=30 limit=50 reason=growth
+[cleanup] Sun Mar  8 13:00:00 CST 2026: trigger=session-end deleted=3 scope=temporary never/manual_only
+EOF
+
+    local result
+    result=$(DEBUG_LOG="$debug_log" "$CLI" status 2>&1)
+
+    assert_contains "$result" "最近 Cleanup" "应该显示 cleanup 摘要区块"
+    assert_contains "$result" "mode=safe" "应该显示最近 cleanup 触发信息"
+    assert_contains "$result" "deleted=3" "应该显示最近 cleanup 结果"
+
+    rm -f "$debug_log"
+}
+
 # ═══════════════════════════════════════════════════════════
 # 测试：capture 命令
 # ═══════════════════════════════════════════════════════════
@@ -419,6 +454,8 @@ test_help_lists_commands
 test_status_shows_db_info
 test_status_shows_memory_count
 test_status_shows_session_count
+test_status_shows_failed_queue_summary
+test_status_shows_recent_cleanup_summary
 
 # capture 命令测试
 test_capture_memory

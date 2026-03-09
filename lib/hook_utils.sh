@@ -170,6 +170,14 @@ queue_failed_capture_log() {
     local unique_suffix=""
     local project_path_b64=""
     local project_root_b64=""
+    local tags_b64=""
+    local concepts_b64=""
+    local summary_b64=""
+    local source="${7:-}"
+    local tags="${8:-}"
+    local concepts="${9:-}"
+    local summary="${10:-}"
+    local source_b64=""
 
     if [ -z "$log_file" ] || [ ! -f "$log_file" ] || [ ! -s "$log_file" ]; then
         return 1
@@ -190,6 +198,18 @@ queue_failed_capture_log() {
     if [ -n "$project_root" ]; then
         project_root_b64=$(queue_encode_metadata_value "$project_root")
     fi
+    if [ -n "$source" ]; then
+        source_b64=$(queue_encode_metadata_value "$source")
+    fi
+    if [ -n "$tags" ]; then
+        tags_b64=$(queue_encode_metadata_value "$tags")
+    fi
+    if [ -n "$concepts" ]; then
+        concepts_b64=$(queue_encode_metadata_value "$concepts")
+    fi
+    if [ -n "$summary" ]; then
+        summary_b64=$(queue_encode_metadata_value "$summary")
+    fi
     queued_path=$(mktemp "$queue_dir/failed_${safe_hook}_${safe_session}_XXXXXX.log" 2>/dev/null || true)
     if [ -z "$queued_path" ]; then
         unique_suffix="$(date +%s 2>/dev/null || echo 0)_$$_${RANDOM:-0}"
@@ -203,6 +223,18 @@ queue_failed_capture_log() {
         fi
         if [ -n "$project_root_b64" ]; then
             printf "# project_root_b64=%s\n" "$project_root_b64"
+        fi
+        if [ -n "$source_b64" ]; then
+            printf "# source_b64=%s\n" "$source_b64"
+        fi
+        if [ -n "$tags_b64" ]; then
+            printf "# tags_b64=%s\n" "$tags_b64"
+        fi
+        if [ -n "$concepts_b64" ]; then
+            printf "# concepts_b64=%s\n" "$concepts_b64"
+        fi
+        if [ -n "$summary_b64" ]; then
+            printf "# summary_b64=%s\n" "$summary_b64"
         fi
         cat "$log_file"
     } > "$queued_path" 2>/dev/null || {
@@ -223,6 +255,10 @@ queue_failed_capture_content() {
     local reason="${4:-capture_failed}"
     local project_path="${5:-}"
     local project_root="${6:-}"
+    local source="${7:-}"
+    local tags="${8:-}"
+    local concepts="${9:-}"
+    local summary="${10:-}"
     local temp_file=""
     local result=""
 
@@ -236,7 +272,7 @@ queue_failed_capture_content() {
     fi
 
     printf '%s\n' "$content" > "$temp_file"
-    result=$(queue_failed_capture_log "$hook_name" "$session_id" "$temp_file" "$reason" "$project_path" "$project_root" || true)
+    result=$(queue_failed_capture_log "$hook_name" "$session_id" "$temp_file" "$reason" "$project_path" "$project_root" "$source" "$tags" "$concepts" "$summary" || true)
     rm -f "$temp_file"
 
     if [ -n "$result" ]; then

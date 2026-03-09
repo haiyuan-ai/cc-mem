@@ -59,7 +59,7 @@ if [ -n "$USER_PROMPT" ]; then
                 hook_log "user-prompt-submit" "Reusable prompt saved"
             else
                 reusable_prompt_queue=""
-                reusable_prompt_queue=$(queue_failed_capture_content "user-prompt-submit" "$SESSION_ID" "$USER_PROMPT" "reusable_prompt_capture_failed" "$PROJECT_PATH" "$(resolve_hook_project_root "user-prompt-submit" "$PROJECT_PATH")" || true)
+                reusable_prompt_queue=$(queue_failed_capture_content "user-prompt-submit" "$SESSION_ID" "$USER_PROMPT" "reusable_prompt_capture_failed" "$PROJECT_PATH" "$(resolve_hook_project_root "user-prompt-submit" "$PROJECT_PATH")" "user_prompt_submit" "auto-captured,user-prompt,reusable" "user-preference" "$prompt_summary" || true)
                 if [ -n "$reusable_prompt_queue" ]; then
                     hook_log "user-prompt-submit" "Reusable prompt capture failed, queued at: $reusable_prompt_queue"
                 else

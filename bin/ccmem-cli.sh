@@ -592,6 +592,7 @@ export_to_markdown_safe() {
     local summary=""
     local tags=""
     local content=""
+    local stored_project_path=""
     local safe_timestamp=""
     local filename=""
 
@@ -610,6 +611,7 @@ export_to_markdown_safe() {
         summary=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(summary, '') FROM memories WHERE id = '$memory_id_escaped';")
         tags=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(tags, '') FROM memories WHERE id = '$memory_id_escaped';")
         content=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(content, '') FROM memories WHERE id = '$memory_id_escaped';")
+        stored_project_path=$(sqlite3 -noheader "$CCMEM_MEMORY_DB" "SELECT COALESCE(project_path, '') FROM memories WHERE id = '$memory_id_escaped';")
 
         [ -z "$timestamp" ] && continue
         safe_timestamp="${timestamp//:/-}"
@@ -622,7 +624,7 @@ id: $memory_id
 timestamp: $timestamp
 category: $category
 tags: $tags
-project: $project_path
+project: $stored_project_path
 ---
 
 # $summary
@@ -651,12 +653,20 @@ retry_process_file() {
     local auto_inject_policy=""
     local project_path=""
     local project_root=""
+    local queued_source=""
+    local queued_tags=""
+    local queued_concepts=""
+    local queued_summary=""
     local store_result=""
 
     hook_name=$(retry_read_metadata "$file_path" "hook")
     session_id=$(retry_read_metadata "$file_path" "session_id")
     project_path=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "project_path_b64")")
     project_root=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "project_root_b64")")
+    queued_source=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "source_b64")")
+    queued_tags=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "tags_b64")")
+    queued_concepts=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "concepts_b64")")
+    queued_summary=$(retry_decode_metadata_value "$(retry_read_metadata "$file_path" "summary_b64")")
 
     if [ -z "$hook_name" ]; then
         printf '%s\n' "skip:missing-hook"
@@ -672,6 +682,9 @@ retry_process_file() {
     source=$(printf '%s' "$meta" | cut -d'|' -f1)
     tags=$(printf '%s' "$meta" | cut -d'|' -f2)
     concepts=$(printf '%s' "$meta" | cut -d'|' -f3)
+    [ -n "$queued_source" ] && source="$queued_source"
+    [ -n "$queued_tags" ] && tags="$queued_tags"
+    [ -n "$queued_concepts" ] && concepts="$queued_concepts"
     content=$(retry_read_content "$file_path")
     filtered_content=$(strip_injected_context_blocks "$content")
 
@@ -680,7 +693,10 @@ retry_process_file() {
         return 1
     fi
 
-    summary=$(build_default_summary "$filtered_content")
+    summary="$queued_summary"
+    if [ -z "$summary" ]; then
+        summary=$(build_default_summary "$filtered_content")
+    fi
     classification_result=$(classify_memory "$source" "$summary" "$filtered_content" "$tags" "$concepts")
     category=$(printf '%s' "$classification_result" | cut -d'|' -f1)
     confidence=$(printf '%s' "$classification_result" | cut -d'|' -f2)

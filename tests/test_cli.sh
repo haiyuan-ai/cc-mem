@@ -445,6 +445,7 @@ test_export_handles_pipe_characters() {
     exported_content=$(cat "$exported_file")
     assert_contains "$exported_content" "$summary" "导出应保留包含竖线的摘要"
     assert_contains "$exported_content" "$content" "导出应保留包含竖线的正文"
+    assert_contains "$exported_content" "project: /tmp/export-pipe-project" "导出应保留每条记忆自己的项目路径"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -517,6 +518,45 @@ EOF
 
     assert_contains "$result" "重复跳过：1" "duplicate 应计入重复跳过"
     assert_equals "0" "$(find "$queue_dir" -type f | wc -l | tr -d ' ')" "duplicate 也应删除队列文件"
+}
+
+it "retry 应按队列元数据恢复可复用 prompt 语义"
+test_retry_restores_reusable_prompt_metadata() {
+    local config_file="$CCMEM_CONFIG_FILE"
+    local queue_dir="$TEST_DB_DIR/retry-reusable-queue"
+    local payload="不要单独引入 queue-status，统一放进 status 中扩展"
+    mkdir -p "$queue_dir"
+
+    python3 - <<PY
+import json
+path = "$config_file"
+with open(path) as f:
+    data = json.load(f)
+data["failed_queue_dir"] = "$queue_dir"
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\\n")
+PY
+
+    cat > "$queue_dir/failed_user-prompt-submit_test_006.log" <<'EOF'
+# hook=user-prompt-submit session_id=test_retry reason=reusable_prompt_capture_failed queued_at=2026-03-08T00:00:00Z
+# project_path_b64=L3RtcC9yZXRyeS1yZXVzYWJsZS1wcm9qZWN0
+# project_root_b64=L3RtcC9yZXRyeS1yZXVzYWJsZS1wcm9qZWN0
+# source_b64=dXNlcl9wcm9tcHRfc3VibWl0
+# tags_b64=YXV0by1jYXB0dXJlZCx1c2VyLXByb21wdCxyZXVzYWJsZQ==
+# concepts_b64=dXNlci1wcmVmZXJlbmNl
+# summary_b64=5LiN6KaB5Y2V54us5byV5YWlIHF1ZXVlLXN0YXR1cyznu5/kuIDmlL7ov5sgc3RhdHVzIOS4reaJqeWxlQ==
+不要单独引入 queue-status，统一放进 status 中扩展
+EOF
+
+    local result
+    result=$("$CLI" retry 2>&1)
+
+    assert_contains "$result" "成功恢复：1" "应恢复 1 条可复用 prompt 记忆"
+    local restored_row
+    restored_row=$(db_query "SELECT source || '|' || tags || '|' || concepts || '|' || summary FROM memories WHERE content = '$payload' LIMIT 1;")
+    assert_contains "$restored_row" "user_prompt_submit|auto-captured,user-prompt,reusable|user-preference|" "应恢复原有 source/tags/concepts 语义"
+    assert_contains "$restored_row" "status" "应恢复原有摘要"
 }
 
 it "--dry-run 不应删除队列文件"

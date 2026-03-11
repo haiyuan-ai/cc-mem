@@ -1,4 +1,7 @@
 #!/bin/bash
+# Source guard - prevent double-loading
+[[ -n "${_CCMEM_CONFIG_SH_LOADED:-}" ]] && return 0 2>/dev/null || true
+_CCMEM_CONFIG_SH_LOADED=1
 
 CONFIG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCMEM_ROOT_DIR="$(cd "$CONFIG_LIB_DIR/.." && pwd)"

@@ -268,10 +268,14 @@ def handle_request(message: Dict[str, Any]) -> Dict[str, Any] | None:
         params = message.get("params", {})
         name = params.get("name")
         arguments = params.get("arguments", {})
+        try:
+            result = handle_tool_call(name, arguments)
+        except Exception as exc:
+            result = tool_text_result(f"Internal error: {exc}", is_error=True)
         return {
             "jsonrpc": "2.0",
             "id": req_id,
-            "result": handle_tool_call(name, arguments),
+            "result": result,
         }
 
     if req_id is not None:

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Source guard - prevent double-loading
+[[ -n "${_CCMEM_MEMORY_POLICY_SH_LOADED:-}" ]] && return 0 2>/dev/null || true
+_CCMEM_MEMORY_POLICY_SH_LOADED=1
 
 infer_memory_kind() {
     local source="$1"

@@ -156,13 +156,17 @@ main() {
     fi
 
     # 更新会话（标记为 stopped 状态）
+    local session_summary_escaped
+    local session_id_escaped
+    session_summary_escaped=$(sql_escape "$session_summary")
+    session_id_escaped=$(sql_escape "$SESSION_ID")
     sqlite3 "$CCMEM_MEMORY_DB" <<EOF
 UPDATE sessions
 SET end_time = CURRENT_TIMESTAMP,
     message_count = $msg_count,
-    summary = '$(echo "$session_summary" | sed "s/'/''/g")',
+    summary = '$session_summary_escaped',
     status = 'stopped'
-WHERE id = '$SESSION_ID';
+WHERE id = '$session_id_escaped';
 EOF
     echo "[stop] $(date): Updated session record with stopped status" >> "$CCMEM_DEBUG_LOG"
 

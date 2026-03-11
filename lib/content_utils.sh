@@ -1,5 +1,8 @@
 #!/bin/bash
 # 内容处理辅助函数库
+# Source guard - prevent double-loading
+[[ -n "${_CCMEM_CONTENT_UTILS_SH_LOADED:-}" ]] && return 0 2>/dev/null || true
+_CCMEM_CONTENT_UTILS_SH_LOADED=1
 
 # 概念标签定义 - 使用简单变量存储关键词（兼容 grep）
 CONCEPT_how_it_works="工作原理|如何实现 | 机制 | 流程 | 步骤"
@@ -22,9 +25,9 @@ count_matches() {
     IFS='|' read -ra keywords <<< "$pattern"
     for keyword in "${keywords[@]}"; do
         # 去除前后空格
-        keyword=$(echo "$keyword" | xargs)
+        keyword=$(printf "%s" "$keyword" | xargs)
         if [ -n "$keyword" ]; then
-            matches=$(echo "$content" | grep -o "$keyword" 2>/dev/null | wc -l)
+            matches=$(printf "%s\n" "$content" | grep -o "$keyword" 2>/dev/null | wc -l)
             count=$((count + matches))
         fi
     done
@@ -91,10 +94,10 @@ filter_private_content() {
     # 移除 <private>...</private> 标签内的内容
     # 使用 perl 处理多行内容（如果可用），否则使用简单的 sed
     if command -v perl &> /dev/null; then
-        echo "$content" | perl -0777 -pe 's/<private>.*?<\/private>//gs'
+        printf "%s" "$content" | perl -0777 -pe 's/<private>.*?<\/private>//gs'
     else
         # 简单的单行 sed 处理
-        echo "$content" | sed 's/<private>[^<]*<\/private>//g'
+        printf "%s\n" "$content" | sed 's/<private>[^<]*<\/private>//g'
     fi
 }
 
@@ -102,7 +105,7 @@ filter_private_content() {
 has_private_content() {
     local content="$1"
 
-    if echo "$content" | grep -q "<private>"; then
+    if printf "%s" "$content" | grep -q "<private>"; then
         return 0  # 包含私有内容
     else
         return 1  # 不包含私有内容

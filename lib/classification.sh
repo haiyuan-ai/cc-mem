@@ -1,4 +1,7 @@
 #!/bin/bash
+# Source guard - prevent double-loading
+[[ -n "${_CCMEM_CLASSIFICATION_SH_LOADED:-}" ]] && return 0 2>/dev/null || true
+_CCMEM_CLASSIFICATION_SH_LOADED=1
 
 classification_matches() {
     local text="$1"
@@ -32,10 +35,10 @@ classification_add_score() {
 
     current_score="${current_score:-0}"
     current_score=$((current_score + delta))
-    eval "$score_var=\"$current_score\""
+    printf -v "$score_var" '%s' "$current_score"
 
     next_reason=$(classification_append_reason "$current_reason" "$reason")
-    eval "$reason_var=\"\$next_reason\""
+    printf -v "$reason_var" '%s' "$next_reason"
 }
 
 apply_keyword_scores() {

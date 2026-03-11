@@ -19,6 +19,13 @@ sql_escape() {
     printf "%s" "$value" | sed "s/'/''/g"
 }
 
+# 转义 LIKE 子句中的通配符（%、_、\），防止用户输入被解释为通配符。
+# 使用时需在 SQL 中添加 ESCAPE '\'。
+sql_escape_like() {
+    local value="$1"
+    printf "%s" "$value" | sed "s/'/''/g" | sed 's/\\/\\\\/g; s/%/\\%/g; s/_/\\_/g'
+}
+
 # 检测查询中是否包含 CJK 字符，用于决定是否启用 LIKE 回退。
 contains_cjk() {
     local value="$1"
@@ -147,6 +154,7 @@ memory_display_timestamp_sql() {
 }
 
 ensure_memories_runtime_objects() {
+    # 创建索引（幂等操作）
     sqlite3 "$CCMEM_MEMORY_DB" <<'EOF'
 CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
 CREATE INDEX IF NOT EXISTS idx_memories_content_hash_scope ON memories(content_hash, project_root);
@@ -160,8 +168,20 @@ CREATE INDEX IF NOT EXISTS idx_memories_memory_kind ON memories(memory_kind);
 CREATE INDEX IF NOT EXISTS idx_memories_auto_inject_policy ON memories(auto_inject_policy);
 CREATE INDEX IF NOT EXISTS idx_memories_project_root ON memories(project_root);
 CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
+EOF
 
-DROP TABLE IF EXISTS memories_fts;
+    # 检查 FTS 表和触发器是否已存在，避免每次调用都 DROP + rebuild
+    local fts_exists
+    local trigger_exists
+    fts_exists=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='memories_fts';" 2>/dev/null || echo "0")
+    trigger_exists=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='memories_ai';" 2>/dev/null || echo "0")
+
+    if [ "$fts_exists" = "1" ] && [ "$trigger_exists" = "1" ]; then
+        return
+    fi
+
+    # FTS 表或触发器不存在，需要完整创建
+    sqlite3 "$CCMEM_MEMORY_DB" <<'EOF'
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     content,
     summary,
@@ -170,6 +190,39 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     content_rowid='rowid'
 );
 
+CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(rowid, content, summary, tags)
+    VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content, summary, tags)
+    VALUES ('delete', OLD.rowid, OLD.content, OLD.summary, OLD.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content, summary, tags)
+    VALUES ('delete', OLD.rowid, OLD.content, OLD.summary, OLD.tags);
+    INSERT INTO memories_fts(rowid, content, summary, tags)
+    VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
+END;
+EOF
+
+    # 只在 FTS 表刚创建时执行 rebuild
+    sqlite3 "$CCMEM_MEMORY_DB" "INSERT INTO memories_fts(memories_fts) VALUES('rebuild');" 2>/dev/null || true
+}
+
+# 强制重建 FTS 索引（供 init 和 repair 场景使用）
+force_rebuild_fts() {
+    sqlite3 "$CCMEM_MEMORY_DB" <<'EOF'
+DROP TABLE IF EXISTS memories_fts;
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    content,
+    summary,
+    tags,
+    content='memories',
+    content_rowid='rowid'
+);
 INSERT INTO memories_fts(memories_fts) VALUES('rebuild');
 
 DROP TRIGGER IF EXISTS memories_ai;
@@ -381,7 +434,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_root ON sessions(project_root);
 
 EOF
-    ensure_memories_runtime_objects
+    force_rebuild_fts
     echo "Database initialized at $CCMEM_MEMORY_DB"
 }
 
@@ -567,11 +620,13 @@ retrieve_memories() {
 
     if [ -n "$query" ]; then
         local query_escaped
+        local query_like_escaped
         query_escaped=$(sql_escape "$query")
+        query_like_escaped=$(sql_escape_like "$query")
 
         if contains_cjk "$query"; then
             # CJK 查询：先走 FTS，同时允许 LIKE 回退。
-            where_clause="$where_clause AND (rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped') OR (content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%'))"
+            where_clause="$where_clause AND (rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped') OR (content LIKE '%${query_like_escaped}%' ESCAPE '\\' OR summary LIKE '%${query_like_escaped}%' ESCAPE '\\' OR tags LIKE '%${query_like_escaped}%' ESCAPE '\\'))"
         else
             # 非 CJK 查询：使用全文检索 (注意：必须使用 rowid 而不是 id)
             where_clause="$where_clause AND rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')"
@@ -636,7 +691,9 @@ EOF
     # 阶段 2: 项目路径匹配 + 全文检索
     if [ -n "$query" ] && [ -n "$project_path" ]; then
         local query_escaped
+        local query_like_escaped
         query_escaped=$(sql_escape "$query")
+        query_like_escaped=$(sql_escape_like "$query")
 
         if contains_cjk "$query"; then
             # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
@@ -657,7 +714,7 @@ SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, conc
 FROM memories
 WHERE (project_path = '$project_path_escaped' OR project_path LIKE '$project_path_escaped/%')
   AND (rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
-       OR content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%')
+       OR content LIKE '%${query_like_escaped}%' ESCAPE '\\' OR summary LIKE '%${query_like_escaped}%' ESCAPE '\\' OR tags LIKE '%${query_like_escaped}%' ESCAPE '\\')
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF
@@ -684,7 +741,9 @@ EOF
     # 阶段 3: 全文检索（不限项目）
     if [ -n "$query" ]; then
         local query_escaped
+        local query_like_escaped
         query_escaped=$(sql_escape "$query")
+        query_like_escaped=$(sql_escape_like "$query")
 
         if contains_cjk "$query"; then
             # CJK 查询：先尝试 FTS，结果不足时再退回 LIKE。
@@ -703,7 +762,7 @@ EOF
 SELECT id, $(memory_display_timestamp_sql) AS timestamp, category, summary, concepts, tags
 FROM memories
 WHERE rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
-   OR content LIKE '%${query_escaped}%' OR summary LIKE '%${query_escaped}%' OR tags LIKE '%${query_escaped}%'
+   OR content LIKE '%${query_like_escaped}%' ESCAPE '\\' OR summary LIKE '%${query_like_escaped}%' ESCAPE '\\' OR tags LIKE '%${query_like_escaped}%' ESCAPE '\\'
 ORDER BY timestamp_epoch DESC
 LIMIT $limit;
 EOF

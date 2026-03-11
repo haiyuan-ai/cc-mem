@@ -1,4 +1,7 @@
 #!/bin/bash
+# Source guard - prevent double-loading
+[[ -n "${_CCMEM_HOOK_UTILS_SH_LOADED:-}" ]] && return 0 2>/dev/null || true
+_CCMEM_HOOK_UTILS_SH_LOADED=1
 
 HOOK_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HOOK_UTILS_DIR/config.sh"

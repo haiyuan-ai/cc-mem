@@ -1,4 +1,7 @@
 #!/bin/bash
+# Source guard - prevent double-loading
+[[ -n "${_CCMEM_INJECTION_SH_LOADED:-}" ]] && return 0 2>/dev/null || true
+_CCMEM_INJECTION_SH_LOADED=1
 
 INJECTION_FIELD_SEP=$'\x1f'
 
@@ -366,10 +369,12 @@ query_recall_memories_for_root() {
     local query="$2"
     local limit="${3:-3}"
     local query_escaped
+    local query_like_escaped
     local project_root_escaped
 
     project_root_escaped=$(sql_escape "$project_root")
     query_escaped=$(sql_escape "$query")
+    query_like_escaped=$(sql_escape_like "$query")
 
     if contains_cjk "$query"; then
         sqlite3 -separator "$INJECTION_FIELD_SEP" "$CCMEM_MEMORY_DB" <<EOF
@@ -380,10 +385,10 @@ WHERE project_root = '$project_root_escaped'
   AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
   AND (
       rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
-      OR content LIKE '%${query_escaped}%'
-      OR summary LIKE '%${query_escaped}%'
-      OR tags LIKE '%${query_escaped}%'
-      OR concepts LIKE '%${query_escaped}%'
+      OR content LIKE '%${query_like_escaped}%' ESCAPE '\'
+      OR summary LIKE '%${query_like_escaped}%' ESCAPE '\'
+      OR tags LIKE '%${query_like_escaped}%' ESCAPE '\'
+      OR concepts LIKE '%${query_like_escaped}%' ESCAPE '\'
   )
 ORDER BY timestamp_epoch DESC
 LIMIT 20;
@@ -399,10 +404,10 @@ WHERE project_root = '$project_root_escaped'
   AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
   AND (
       rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
-      OR content LIKE '%${query_escaped}%'
-      OR summary LIKE '%${query_escaped}%'
-      OR tags LIKE '%${query_escaped}%'
-      OR concepts LIKE '%${query_escaped}%'
+      OR content LIKE '%${query_like_escaped}%' ESCAPE '\'
+      OR summary LIKE '%${query_like_escaped}%' ESCAPE '\'
+      OR tags LIKE '%${query_like_escaped}%' ESCAPE '\'
+      OR concepts LIKE '%${query_like_escaped}%' ESCAPE '\'
   )
 ORDER BY timestamp_epoch DESC
 LIMIT 20;

@@ -1,5 +1,31 @@
 # CC-mem 变更日志
 
+## [1.5.3] - 2026-03-13
+
+### Security
+
+#### 1. SQL 注入修复 (lib/sqlite.sh)
+- **问题**: `store_memory()` 函数中 `classification_confidence` 变量未使用 `sql_escape` 转义
+- **修复**: 添加 `classification_confidence_escaped` 变量，确保所有 SQL 参数都经过转义
+
+#### 2. 命令注入修复 (mcp/server.py)
+- **问题**: `run_recall()` 函数直接将用户输入拼接到 shell 命令，存在命令注入风险
+- **修复**:
+  - 新增 `validate_project_path()` - 验证路径不包含危险字符和遍历序列
+  - 新增 `validate_query()` - 验证查询字符串不包含控制字符
+  - 新增 `sanitize_limit()` - 验证并限制查询结果数量
+  - 使用 `shlex.quote()` 对所有 shell 参数进行转义
+  - 为所有 MCP 工具添加参数验证（category、memory_ids、anchor_id 等）
+
+#### 3. 临时文件竞争条件修复 (hooks)
+- **问题**: 日志文件使用可预测的 `/tmp/ccmem_${SESSION_ID}.log` 路径，存在竞争条件风险
+- **修复**:
+  - 新增 `sanitize_session_id()` - 清理 SESSION_ID，只允许字母数字、下划线和连字符
+  - 新增 `get_operation_log_path()` - 生成安全的日志路径
+  - 新增 `create_operation_log()` - 使用 `umask 0077` 创建文件确保只有当前用户可访问
+  - 更新所有 hooks 使用安全的日志路径生成
+  - `stop.sh` 中 `_final_response.log` 改为使用 `mktemp` 创建
+
 ## [1.5.2] - 2026-03-07
 
 ### ✨ Major Improvements

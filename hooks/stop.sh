@@ -22,6 +22,9 @@ TRANSCRIPT_PATH=$(hook_json_get "$INPUT" '.transcript_path // empty')
 PROJECT_PATH=$(resolve_hook_project_path "stop" "$INPUT")
 hook_log "stop" "session_id=$SESSION_ID, transcript_path=$TRANSCRIPT_PATH"
 
+# 获取安全的日志路径
+LOG_FILE=$(get_operation_log_path "$SESSION_ID")
+
 # 加载库文件
 if ! load_sqlite_runtime "stop" "$PLUGIN_DIR"; then
     exit 1
@@ -134,7 +137,6 @@ main() {
     fi
 
     # 检查操作日志
-    LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
     local operation_log=""
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
         operation_log=$(cat "$LOG_FILE")
@@ -228,7 +230,8 @@ EOF
         fi
 
         # 保存为记忆
-        final_response_log="/tmp/ccmem_${SESSION_ID}_final_response.log"
+        local final_response_log
+        final_response_log=$(mktemp "/tmp/ccmem_final_response_${SESSION_ID}_XXXXXX.log" 2>/dev/null || echo "/tmp/ccmem_final_response_${SESSION_ID}_$$.log")
         printf "=== 会话停止时的最后回复 ===\n%s\n" "$filtered_message" > "$final_response_log"
         if cat "$final_response_log" | "$CLI" capture \
             -p "$PROJECT_PATH" \

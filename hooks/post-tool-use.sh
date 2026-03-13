@@ -47,6 +47,12 @@ esac
 # 获取会话信息 - 从 stdin JSON 解析 session_id
 SESSION_ID=$(resolve_hook_session_id "post-tool-use" "$INPUT")
 
+# 获取安全的日志路径
+LOG_FILE=$(get_operation_log_path "$SESSION_ID")
+
+# 确保日志文件存在并设置安全权限
+create_operation_log "$LOG_FILE"
+
 # 获取项目路径
 PROJECT_PATH=$(resolve_hook_project_path "post-tool-use" "$INPUT")
 
@@ -55,7 +61,7 @@ PROJECT_PATH=$(resolve_hook_project_path "post-tool-use" "$INPUT")
 if [ -z "$INPUT" ] || [ "$INPUT" = "" ]; then
     hook_log "post-tool-use" "WARNING - stdin is empty, cannot get tool details"
     # 记录一个通用的工具调用记录
-    echo "[TOOL_CALL] unknown tool" >> "/tmp/ccmem_${SESSION_ID}.log"
+    echo "[TOOL_CALL] unknown tool" >> "$LOG_FILE"
     hook_log "post-tool-use" "Logged generic tool call"
 else
     case "$TOOL_TYPE" in
@@ -65,7 +71,7 @@ else
 
             if [ -n "$FILE_PATH" ]; then
                 # 累积文件更改记录
-                echo "[FILE_CHANGE] $FILE_PATH: $DESCRIPTION" >> "/tmp/ccmem_${SESSION_ID}.log"
+                echo "[FILE_CHANGE] $FILE_PATH: $DESCRIPTION" >> "$LOG_FILE"
                 hook_log "post-tool-use" "Logged FILE_CHANGE: $FILE_PATH"
             fi
             ;;
@@ -75,7 +81,7 @@ else
 
             if [ -n "$COMMAND" ]; then
                 # 累积命令执行记录
-                echo "[BASH] $COMMAND: $DESCRIPTION" >> "/tmp/ccmem_${SESSION_ID}.log"
+                echo "[BASH] $COMMAND: $DESCRIPTION" >> "$LOG_FILE"
                 hook_log "post-tool-use" "Logged BASH: $COMMAND"
             fi
             ;;
@@ -83,7 +89,6 @@ else
 fi
 
 # 每 3 次操作保存一次（通过计数实现）
-LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
 if [ -f "$LOG_FILE" ]; then
     LINE_COUNT=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
     hook_log "post-tool-use" "LOG_FILE=$LOG_FILE line_count=$LINE_COUNT"

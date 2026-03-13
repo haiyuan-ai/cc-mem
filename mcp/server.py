@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +17,42 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "bin" / "ccmem-cli.sh"
 LIB_PATH = REPO_ROOT / "lib" / "sqlite.sh"
 SERVER_VERSION = "1.5.2"
+
+
+def validate_project_path(path: str) -> bool:
+    """验证项目路径是否合法，防止路径遍历和命令注入。"""
+    if not path or not isinstance(path, str):
+        return False
+    # 拒绝包含 null 字节、控制字符或 shell 特殊字符的路径
+    if "\x00" in path or re.search(r"[<>&|;`$(){}\[\]\\*?\"']", path):
+        return False
+    # 路径必须是绝对路径或相对路径，但不能包含 ../ 遍历
+    if ".." in path.split("/"):
+        return False
+    return True
+
+
+def validate_query(query: str) -> bool:
+    """验证查询字符串是否合法。"""
+    if not query or not isinstance(query, str):
+        return False
+    # 拒绝 null 字节和控制字符
+    if "\x00" in query or any(ord(c) < 32 and c not in "\n\r\t" for c in query):
+        return False
+    return True
+
+
+def sanitize_limit(limit: int, default: int = 3, max_limit: int = 100) -> int:
+    """验证并限制查询结果数量。"""
+    try:
+        limit = int(limit)
+        if limit < 1:
+            return default
+        if limit > max_limit:
+            return max_limit
+        return limit
+    except (ValueError, TypeError):
+        return default
 
 
 TOOLS: List[Dict[str, Any]] = [
@@ -165,16 +203,26 @@ def run_cli(args: List[str], stdin_text: str | None = None) -> Dict[str, Any]:
 
 
 def run_recall(project_path: str, query: str, limit: int) -> Dict[str, Any]:
+    # 验证输入参数
+    if not validate_project_path(project_path):
+        return tool_text_result(f"Invalid project_path: contains dangerous characters", is_error=True)
+    if not validate_query(query):
+        return tool_text_result(f"Invalid query: contains dangerous characters", is_error=True)
+
+    limit = sanitize_limit(limit)
+
+    # 使用 shlex.quote 对参数进行 shell 转义
+    safe_project_path = shlex.quote(project_path)
+    safe_query = shlex.quote(query)
+    safe_limit = shlex.quote(str(limit))
+
     proc = subprocess.run(
         [
             "bash",
             "-lc",
-            'source "$1"; [ -f "$CCMEM_MEMORY_DB" ] || init_db >/dev/null 2>&1; generate_query_recall_context "$2" "$3" "$4"',
+            f'source "$1"; [ -f "$CCMEM_MEMORY_DB" ] || init_db >/dev/null 2>&1; generate_query_recall_context {safe_project_path} {safe_query} {safe_limit}',
             "ccmem-mcp",
             str(LIB_PATH),
-            project_path,
-            query,
-            str(limit),
         ],
         text=True,
         capture_output=True,
@@ -190,51 +238,103 @@ def run_recall(project_path: str, query: str, limit: int) -> Dict[str, Any]:
 def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     if name == "ccmem_capture":
         args = ["capture"]
-        if arguments.get("project_path"):
-            args += ["-p", arguments["project_path"]]
-        if arguments.get("category"):
-            args += ["-c", arguments["category"]]
-        if arguments.get("tags"):
-            args += ["-t", arguments["tags"]]
-        if arguments.get("summary"):
-            args += ["-m", arguments["summary"]]
-        if arguments.get("concepts"):
-            args += ["--concepts", arguments["concepts"]]
-        if arguments.get("session_id"):
-            args += ["-s", arguments["session_id"]]
-        return run_cli(args, stdin_text=arguments["content"])
+        project_path = arguments.get("project_path", "")
+        if project_path:
+            if not validate_project_path(project_path):
+                return tool_text_result("Invalid project_path: contains dangerous characters", is_error=True)
+            args += ["-p", project_path]
+        category = arguments.get("category", "")
+        if category:
+            if category not in ("decision", "solution", "pattern", "debug", "context"):
+                return tool_text_result(f"Invalid category: {category}", is_error=True)
+            args += ["-c", category]
+        tags = arguments.get("tags", "")
+        if tags:
+            args += ["-t", tags]
+        summary = arguments.get("summary", "")
+        if summary:
+            args += ["-m", summary]
+        concepts = arguments.get("concepts", "")
+        if concepts:
+            args += ["--concepts", concepts]
+        session_id = arguments.get("session_id", "")
+        if session_id:
+            args += ["-s", session_id]
+        return run_cli(args, stdin_text=arguments.get("content", ""))
 
     if name == "ccmem_search":
         args = ["search"]
-        if arguments.get("project_path"):
-            args += ["-p", arguments["project_path"]]
-        if arguments.get("query"):
-            args += ["-q", arguments["query"]]
-        if arguments.get("category"):
-            args += ["-c", arguments["category"]]
-        if arguments.get("limit"):
-            args += ["-l", str(arguments["limit"])]
+        project_path = arguments.get("project_path", "")
+        if project_path:
+            if not validate_project_path(project_path):
+                return tool_text_result("Invalid project_path: contains dangerous characters", is_error=True)
+            args += ["-p", project_path]
+        query = arguments.get("query", "")
+        if query:
+            if not validate_query(query):
+                return tool_text_result("Invalid query: contains dangerous characters", is_error=True)
+            args += ["-q", query]
+        category = arguments.get("category", "")
+        if category:
+            if category not in ("decision", "solution", "pattern", "debug", "context"):
+                return tool_text_result(f"Invalid category: {category}", is_error=True)
+            args += ["-c", category]
+        limit = arguments.get("limit")
+        if limit is not None:
+            args += ["-l", str(sanitize_limit(limit))]
         return run_cli(args)
 
     if name == "ccmem_get":
-        return run_cli(["get", *arguments["memory_ids"]])
+        memory_ids = arguments.get("memory_ids", [])
+        if not isinstance(memory_ids, list) or not memory_ids:
+            return tool_text_result("memory_ids must be a non-empty list", is_error=True)
+        # 验证每个 memory_id 格式
+        for mid in memory_ids:
+            if not isinstance(mid, str) or not re.match(r"^[a-zA-Z0-9_-]+$", mid):
+                return tool_text_result(f"Invalid memory_id format: {mid}", is_error=True)
+        return run_cli(["get", *memory_ids])
 
     if name == "ccmem_timeline":
-        args = ["timeline", "-a", arguments["anchor_id"]]
-        args += ["-b", str(arguments.get("before", 3))]
-        args += ["-A", str(arguments.get("after", 3))]
+        anchor_id = arguments.get("anchor_id", "")
+        if not isinstance(anchor_id, str) or not re.match(r"^[a-zA-Z0-9_-]+$", anchor_id):
+            return tool_text_result(f"Invalid anchor_id format: {anchor_id}", is_error=True)
+        args = ["timeline", "-a", anchor_id]
+        before = arguments.get("before", 3)
+        after = arguments.get("after", 3)
+        try:
+            before = max(0, int(before))
+            after = max(0, int(after))
+        except (ValueError, TypeError):
+            return tool_text_result("before/after must be non-negative integers", is_error=True)
+        args += ["-b", str(before)]
+        args += ["-A", str(after)]
         return run_cli(args)
 
     if name == "ccmem_inject_context":
-        args = ["inject-context", "-p", arguments["project_path"]]
-        args += ["-l", str(arguments.get("limit", 3))]
+        project_path = arguments.get("project_path", "")
+        if not validate_project_path(project_path):
+            return tool_text_result("Invalid project_path: contains dangerous characters", is_error=True)
+        args = ["inject-context", "-p", project_path]
+        limit = arguments.get("limit", 3)
+        args += ["-l", str(sanitize_limit(limit, default=3, max_limit=50))]
         return run_cli(args)
 
     if name == "ccmem_recall":
+        project_path = arguments.get("project_path", "")
+        if not validate_project_path(project_path):
+            return tool_text_result("Invalid project_path: contains dangerous characters", is_error=True)
+        query = arguments.get("query", "")
+        if not validate_query(query):
+            return tool_text_result("Invalid query: contains dangerous characters", is_error=True)
+        limit = arguments.get("limit", 3)
+        try:
+            limit = int(limit)
+        except (ValueError, TypeError):
+            limit = 3
         return run_recall(
-            project_path=arguments["project_path"],
-            query=arguments["query"],
-            limit=int(arguments.get("limit", 3)),
+            project_path=project_path,
+            query=query,
+            limit=limit,
         )
 
     return tool_text_result(f"Unknown tool: {name}", is_error=True)

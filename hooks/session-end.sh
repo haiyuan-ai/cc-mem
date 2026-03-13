@@ -18,6 +18,9 @@ hook_log "session-end" "INPUT length=${#INPUT}"
 SESSION_ID=$(resolve_hook_session_id "session-end" "$INPUT")
 PROJECT_PATH=$(resolve_hook_project_path "session-end" "$INPUT")
 
+# 获取安全的日志路径
+LOG_FILE=$(get_operation_log_path "$SESSION_ID")
+
 # 从环境变量获取会话摘要（如果可用）
 SESSION_SUMMARY="${CLAUDE_SESSION_SUMMARY:-}"
 MESSAGE_COUNT="${CLAUDE_MESSAGE_COUNT:-0}"
@@ -35,7 +38,6 @@ hook_log "session-end" "Updated session record"
 # 自动捕获会话记忆
 if [ -f "$CLI" ]; then
     # 检查工具使用日志文件（由 post-tool-use.sh 创建）
-    LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
     hook_log "session-end" "Checking LOG_FILE=$LOG_FILE"
 
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then

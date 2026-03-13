@@ -14,6 +14,12 @@ hook_log "user-prompt-submit" "INPUT length=${#INPUT}"
 SESSION_ID=$(resolve_hook_session_id "user-prompt-submit" "$INPUT")
 PROJECT_PATH=$(resolve_hook_project_path "user-prompt-submit" "$INPUT")
 
+# 获取安全的日志路径
+LOG_FILE=$(get_operation_log_path "$SESSION_ID")
+
+# 确保日志文件存在并设置安全权限
+create_operation_log "$LOG_FILE"
+
 USER_PROMPT=""
 if [ -n "$INPUT" ] && [ "$INPUT" != "" ]; then
     USER_PROMPT=$(echo "$INPUT" | jq -r '
@@ -75,7 +81,6 @@ if [ -n "$USER_PROMPT" ]; then
 fi
 
 # 检查是否有累积的日志
-LOG_FILE="/tmp/ccmem_${SESSION_ID}.log"
 hook_log "user-prompt-submit" "Checking LOG_FILE=$LOG_FILE"
 
 if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then

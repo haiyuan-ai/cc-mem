@@ -550,6 +550,7 @@ store_memory() {
     concepts_escaped=$(sql_escape "$concepts")
     content_hash_escaped=$(sql_escape "$content_hash")
     source_escaped=$(sql_escape "$source")
+    classification_confidence_escaped=$(sql_escape "$classification_confidence")
     classification_reason_escaped=$(sql_escape "$classification_reason")
     classification_source_escaped=$(sql_escape "$classification_source")
     classification_version_escaped=$(sql_escape "$classification_version")
@@ -569,7 +570,7 @@ VALUES (
     '$id_escaped', '$session_id_escaped', '$project_path_escaped', '$project_root_escaped',
     '$category_escaped', '$source_escaped', '$memory_kind_escaped',
     '$auto_inject_policy_escaped', NULLIF('$expires_at_escaped', ''),
-    NULLIF('${classification_confidence}', ''),
+    NULLIF('$classification_confidence_escaped', ''),
     NULLIF('$classification_reason_escaped', ''),
     NULLIF('$classification_source_escaped', ''),
     NULLIF('$classification_version_escaped', ''),

@@ -64,6 +64,42 @@ resolve_hook_project_path() {
     printf '%s\n' "$project_path"
 }
 
+# 安全的临时文件名生成 - 清理 SESSION_ID 防止注入
+sanitize_session_id() {
+    local session_id="$1"
+    # 只允许字母数字、下划线和连字符
+    printf '%s' "$session_id" | tr -cd 'a-zA-Z0-9_-' | head -c 64
+}
+
+# 获取安全的操作日志路径
+get_operation_log_path() {
+    local session_id="$1"
+    local sanitized_id
+    sanitized_id=$(sanitize_session_id "$session_id")
+    if [ -z "$sanitized_id" ]; then
+        sanitized_id="unknown_$$"
+    fi
+    printf '/tmp/ccmem_%s.log' "$sanitized_id"
+}
+
+# 创建操作日志文件（如果不存在），设置安全权限
+create_operation_log() {
+    local log_path="$1"
+    local old_umask
+
+    # 设置 umask 确保文件只有当前用户可读写
+    old_umask=$(umask)
+    umask 0077
+
+    # 创建文件（如果不存在）
+    if [ ! -f "$log_path" ]; then
+        touch "$log_path" 2>/dev/null || true
+    fi
+
+    # 恢复 umask
+    umask "$old_umask"
+}
+
 load_sqlite_runtime() {
     local hook_name="$1"
     local plugin_dir="$2"

@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = REPO_ROOT / "bin" / "ccmem-cli.sh"
 LIB_PATH = REPO_ROOT / "lib" / "sqlite.sh"
-SERVER_VERSION = "1.5.2"
+SERVER_VERSION = "1.5.3"
 
 
 def validate_project_path(path: str) -> bool:

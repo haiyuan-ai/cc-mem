@@ -1,6 +1,6 @@
 #!/bin/bash
 # CC-Mem 插件安装脚本
-# 用法: curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install-plugin.sh | bash
+# 用法: curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install.sh | bash
 
 set -e
 
@@ -89,6 +89,18 @@ BACKUP_INSTALL_DIR=""
 # 2. 初始化数据库
 echo "  初始化数据库..."
 "${INSTALL_DIR}/bin/ccmem-cli.sh" init 2>/dev/null || true
+
+# 2.5 安装 Skill
+echo "  安装 Skill..."
+SKILL_DIR="${HOME}/.claude/skills"
+SKILL_SOURCE="${INSTALL_DIR}/skill/cc-mem.md"
+mkdir -p "$SKILL_DIR"
+if [ -f "$SKILL_SOURCE" ]; then
+    cp "$SKILL_SOURCE" "$SKILL_DIR/cc-mem.md"
+    echo "    ✅ Skill 安装成功"
+else
+    echo "    ⚠️  Skill 文件不存在，跳过"
+fi
 
 # 3. 注册 Marketplace
 echo "  注册 marketplace..."
@@ -190,10 +202,14 @@ echo ""
 echo "✅ CC-Mem ${DISPLAY_VERSION} 安装完成！"
 echo ""
 echo "📍 安装位置: ${INSTALL_DIR}"
+echo "🎯 Skill 位置: ~/.claude/skills/cc-mem.md"
 echo ""
 echo "🚀 使用方法:"
-echo "   ${INSTALL_DIR}/bin/ccmem-cli.sh status    # 查看状态"
-echo "   ${INSTALL_DIR}/bin/ccmem-cli.sh --help    # 查看帮助"
+echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh status    # 查看状态"
+echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh --help    # 查看帮助"
+echo "   Skill: /cc-mem list                             # 列出记忆"
+echo "   Skill: /cc-mem status                           # 查看状态"
+echo "   Skill: /ccmem search <关键词>                   # 搜索记忆"
 if [ "$HAS_JQ" = false ]; then
     echo ""
     echo "⚠️  建议补装 jq 以启用完整 hooks 能力："
@@ -201,11 +217,11 @@ if [ "$HAS_JQ" = false ]; then
     echo "   Ubuntu/Debian: sudo apt-get install jq"
 fi
 echo ""
-echo "⚠️  请重启 Claude Code 以激活 hooks:"
+echo "⚠️  请重启 Claude Code 以激活 hooks 和 Skill:"
 echo "   1. 按 Ctrl+D 或输入 exit"
 echo "   2. 重新运行 claude"
 echo ""
-echo "📋 重启后运行 /plugin 可查看:"
-echo "   Marketplace: ● ${MARKETPLACE_NAME}"
-echo "   Installed:   ● cc-mem ${DISPLAY_VERSION}"
+echo "📋 重启后运行:"
+echo "   /plugin          - 查看插件状态"
+echo "   /cc-mem          - 使用 Skill 快捷命令"
 trap - EXIT

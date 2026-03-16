@@ -70,7 +70,7 @@ Claude Code 轻量级记忆管理系统
 ### 方法一：一键安装脚本（推荐）
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install-plugin.sh | bash
+curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install.sh | bash
 ```
 
 安装完成后重启 Claude Code：
@@ -164,7 +164,20 @@ exit
 
 ## 卸载
 
-### 方法一：使用 `/plugin` 命令（推荐）
+### 方法一：一键卸载脚本（推荐）
+
+```bash
+curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/uninstall.sh | bash
+```
+
+然后重启 Claude Code 会话：
+
+```bash
+exit
+# 重新运行 claude
+```
+
+### 方法二：使用 `/plugin` 命令
 
 ```bash
 /plugin uninstall cc-mem@haiyuan-ai-cc-mem
@@ -177,7 +190,7 @@ exit
 # 重新运行 claude
 ```
 
-### 方法二：手动卸载
+### 方法三：手动卸载
 
 **步骤 1: 删除插件目录**
 
@@ -185,13 +198,19 @@ exit
 rm -rf ~/.claude/plugins/marketplaces/haiyuan-ai-cc-mem
 ```
 
+**步骤 2: 删除 Skill**
+
+```bash
+rm -f ~/.claude/skills/cc-mem.md
+```
+
 > **说明**：插件级别的 hooks 会自动移除，无需手动编辑配置文件。
 
-**步骤 2: 清理 Marketplace 注册（可选）**
+**步骤 3: 清理 Marketplace 注册（可选）**
 
 编辑 `~/.claude/plugins/known_marketplaces.json`，删除 `haiyuan-ai-cc-mem` 条目。
 
-**步骤 3: 删除数据库（可选）**
+**步骤 4: 删除数据库（可选）**
 
 ```bash
 # 默认路径
@@ -200,7 +219,7 @@ rm -rf ~/.claude/cc-mem/memory.db
 rm -rf ~/.config/cc-mem/memory.db
 ```
 
-**步骤 4: 重启 Claude Code 会话**
+**步骤 5: 重启 Claude Code 会话**
 
 ```bash
 exit

@@ -29,6 +29,9 @@ Thumbs.db
 *~
 AGENTS.md
 
+# Claude Code 本地配置
+.claude/
+
 # 临时文件
 *.tmp
 *.bak

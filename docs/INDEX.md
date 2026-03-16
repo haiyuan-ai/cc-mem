@@ -38,7 +38,8 @@ cc-mem/
 ├── README.md                 # 主文档（含快速开始、示例、最佳实践）
 ├── LICENSE                   # MIT 许可
 ├── .gitignore                # Git 忽略规则
-├── install-plugin.sh         # 一键安装脚本
+├── install.sh                # 一键安装脚本（同时安装 plugin + skill）
+├── uninstall.sh              # 一键卸载脚本（同时删除 plugin + skill）
 ├── .claude-plugin/
 │   ├── marketplace.json      # Claude Code Marketplace 配置
 │   └── plugin.json           # 插件元数据
@@ -71,6 +72,8 @@ cc-mem/
 │   ├── stop.sh               # Stop Hook（会话中断时触发，可访问 transcript）
 │   ├── post-tool-use.sh      # PostToolUse Hook (实时捕获)
 │   └── user-prompt-submit.sh # UserPromptSubmit Hook (批量保存)
+├── skill/
+│   └── cc-mem.md             # Claude Code Skill 定义（安装时自动复制到 ~/.claude/skills/）
 ├── mcp/
 │   └── server.py             # 零依赖 stdio MCP server
 ├── extensions/

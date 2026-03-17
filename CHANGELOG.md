@@ -2,6 +2,11 @@
 
 ## [1.5.3] - 2026-03-13
 
+### Added
+
+#### Claude Code Skill 支持
+- 新增 cc-mem skill，更方便调用 cc-mem-cli.sh 功能
+
 ### Security
 
 #### 1. SQL 注入修复 (lib/sqlite.sh)

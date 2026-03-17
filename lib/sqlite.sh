@@ -291,17 +291,17 @@ summarize_operation_log() {
     file_changes=$(printf "%s\n" "$content" | grep '^\[FILE_CHANGE\]' 2>/dev/null | tail -n "$max_items" | sed 's/^\[FILE_CHANGE\] /- /')
     bash_commands=$(printf "%s\n" "$content" | grep '^\[BASH\]' 2>/dev/null | tail -n "$max_items" | sed 's/^\[BASH\] /- /')
 
-    echo "操作摘要: Files=${file_change_count} Bash=${bash_count}"
+    echo "Operation Summary: Files=${file_change_count} Bash=${bash_count}"
 
     if [ -n "$file_changes" ]; then
         echo ""
-        echo "最近文件变更:"
+        echo "Recent File Changes:"
         printf "%s\n" "$file_changes"
     fi
 
     if [ -n "$bash_commands" ]; then
         echo ""
-        echo "最近命令:"
+        echo "Recent Commands:"
         printf "%s\n" "$bash_commands"
     fi
 }
@@ -331,11 +331,11 @@ condense_final_response() {
     condensed="$first_line"
 
     if [ -n "$key_points" ]; then
-        condensed="${condensed}"$'\n\n'"关键点:"$'\n'"$key_points"
+        condensed="${condensed}"$'\n\n'"Key Points:"$'\n'"$key_points"
     fi
 
     if [ -n "$last_line" ] && [ "$last_line" != "$first_line" ]; then
-        condensed="${condensed}"$'\n\n'"结尾:"$'\n'"$last_line"
+        condensed="${condensed}"$'\n\n'"Conclusion:"$'\n'"$last_line"
     fi
 
     if [ "${#condensed}" -gt "$max_chars" ]; then
@@ -835,7 +835,7 @@ get_timeline() {
     local anchor_epoch=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT timestamp_epoch FROM memories WHERE id = '$anchor_id_escaped';")
 
     if [ -z "$anchor_epoch" ]; then
-        echo "未找到记忆：$anchor_id"
+        echo "Memory not found: $anchor_id"
         return 1
     fi
 

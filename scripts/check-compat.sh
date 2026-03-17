@@ -1,99 +1,99 @@
 #!/bin/bash
-# CC-Mem 兼容性检查脚本
-# 用法：bash check-compat.sh
+# CC-Mem Compatibility Check Script
+# Usage: bash check-compat.sh
 
-echo "=== CC-Mem 兼容性检查 ==="
+echo "=== CC-Mem Compatibility Check ==="
 echo ""
 
-# 系统信息
+# System info
 SYSTEM=$(uname -s)
-echo "系统：$SYSTEM $(uname -r)"
+echo "System: $SYSTEM $(uname -r)"
 
-# Git Bash 检测
+# Git Bash detection
 if [[ "$SYSTEM" == "MSYS"* ]] || [[ "$SYSTEM" == "MINGW"* ]]; then
-    echo "环境：Git Bash for Windows"
+    echo "Environment: Git Bash for Windows"
     echo "HOME: $HOME (USERPROFILE: $USERPROFILE)"
 else
-    echo "Bash 版本：$(bash --version 2>&1 | head -1)"
+    echo "Bash version: $(bash --version 2>&1 | head -1)"
 fi
 echo ""
 
-# 依赖检查
-echo "=== 依赖检查 ==="
+# Dependency check
+echo "=== Dependency Check ==="
 
 check_command() {
     local cmd="$1"
     local required="$2"
 
     if command -v "$cmd" &> /dev/null; then
-        # 尝试获取版本，处理 BSD/GNU 差异
+        # Try to get version, handle BSD/GNU differences
         local version=""
         if "$cmd" --version &> /dev/null; then
             version=$("$cmd" --version 2>&1 | head -1)
         elif "$cmd" -V &> /dev/null; then
             version=$("$cmd" -V 2>&1 | head -1)
         else
-            version="已安装"
+            version="installed"
         fi
         echo "  ✅ $cmd: $version"
         return 0
     else
         if [ "$required" = "required" ]; then
-            echo "  ❌ $cmd: 未安装 (必需)"
+            echo "  ❌ $cmd: not installed (required)"
             return 1
         else
-            echo "  ⚠️  $cmd: 未安装 (可选)"
+            echo "  ⚠️  $cmd: not installed (optional)"
             return 1
         fi
     fi
 }
 
-# 必需依赖
+# Required dependencies
 check_command "sqlite3" "required"
 check_command "bash" "required"
 check_command "grep" "required"
 check_command "sed" "required"
 
-# 可选依赖
+# Optional dependencies
 echo ""
-echo "=== 可选功能依赖 ==="
-check_command "perl" "optional"  # 私有内容过滤
-check_command "du" "optional"    # 数据库大小
-check_command "jq" "optional"    # Hooks JSON 解析
+echo "=== Optional Features ==="
+check_command "perl" "optional"  # Private content filtering
+check_command "du" "optional"    # Database size
+check_command "jq" "optional"    # Hooks JSON parsing
 
-# 检查 date 命令兼容性
+# Check date command compatibility
 echo ""
-echo "=== Date 命令兼容性 ==="
+echo "=== Date Command Compatibility ==="
 if date -Iseconds &> /dev/null; then
-    echo "  ✅ ISO 8601 格式：支持 (date -Iseconds)"
+    echo "  ✅ ISO 8601 format: supported (date -Iseconds)"
 else
-    echo "  ⚠️  ISO 8601 格式：不支持，使用替代方案"
-    echo "     替代：$(date +%Y-%m-%dT%H:%M:%S%z)"
+    echo "  ⚠️  ISO 8601 format: not supported, using fallback"
+    echo "     Fallback: $(date +%Y-%m-%dT%H:%M:%S%z)"
 fi
 
 if date +%s &> /dev/null; then
-    echo "  ✅ Unix 时间戳：支持 (date +%s)"
+    echo "  ✅ Unix timestamp: supported (date +%s)"
 else
-    echo "  ❌ Unix 时间戳：不支持"
+    echo "  ❌ Unix timestamp: not supported"
 fi
 
-# 检查 /dev/urandom
+# Check /dev/urandom
 echo ""
-echo "=== 随机数生成 ==="
+echo "=== Random Number Generation ==="
 if [ -e /dev/urandom ]; then
-    echo "  ✅ /dev/urandom: 可用"
+    echo "  ✅ /dev/urandom: available"
 else
-    echo "  ⚠️  /dev/urandom: 不可用，需要替代方案"
+    echo "  ⚠️  /dev/urandom: not available, alternative needed"
 fi
 
-# SQLite FTS5 支持
+# SQLite FTS5 support
 echo ""
-echo "=== SQLite FTS5 支持 ==="
+echo "=== SQLite FTS5 Support ==="
 if sqlite3 ":memory:" "CREATE VIRTUAL TABLE t USING fts5(content);" 2>/dev/null; then
-    echo "  ✅ FTS5: 支持"
+    echo "  ✅ FTS5: supported"
 else
-    echo "  ⚠️  FTS5: 不支持 (全文检索功能将不可用)"
+    echo "  ⚠️  FTS5: not supported (full-text search will be unavailable)"
 fi
 
 echo ""
-echo "=== 检查完成 ==="
+echo "=== Check Complete ==="

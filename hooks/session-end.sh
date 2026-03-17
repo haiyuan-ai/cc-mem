@@ -1,6 +1,6 @@
 #!/bin/bash
-# Session End Hook - 会话结束时捕获记忆
-# 由 Claude Code hooks 系统调用
+# Session End Hook - Capture memory when session ends
+# Called by Claude Code hooks system
 
 # 不设置 set -e，允许脚本继续执行即使部分命令失败
 
@@ -76,7 +76,7 @@ if [ -f "$CLI" ]; then
                 2>/dev/null; then
                 > "$LOG_FILE"
                 hook_log "session-end" "Buffered log cleared after session-end capture"
-                echo "[CC-Mem] 已保存会话记忆：$SESSION_ID"
+                echo "[CC-Mem] Session memory saved: $SESSION_ID"
                 hook_log "session-end" "Memory saved"
             else
                 queued_path=""
@@ -86,11 +86,11 @@ if [ -f "$CLI" ]; then
                 else
                     hook_log "session-end" "Capture failed and queue fallback failed, keeping buffered log"
                 fi
-                echo "[CC-Mem] 会话记忆保存失败，已入队待重试：$SESSION_ID"
+                echo "[CC-Mem] Session memory save failed, queued for retry: $SESSION_ID"
             fi
         fi
     else
-        echo "[CC-Mem] 会话结束，无待保存记忆：$SESSION_ID"
+        echo "[CC-Mem] Session ended, no pending memories: $SESSION_ID"
         hook_log "session-end" "No log file or empty"
     fi
 else
@@ -99,5 +99,5 @@ fi
 
 run_opportunistic_cleanup "session-end" 30 50 "$(get_cleanup_throttle_seconds)" "$PROJECT_PATH" || true
 
-echo "[CC-Mem] 会话已结束：$SESSION_ID"
+echo "[CC-Mem] Session ended: $SESSION_ID"
 hook_log "session-end" "END"

@@ -1,6 +1,6 @@
 #!/bin/bash
-# PostToolUse Hook - 工具使用后捕获观察记录
-# 由 Claude Code hooks 系统调用
+# PostToolUse Hook - Capture observation after tool use
+# Called by Claude Code hooks system
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"

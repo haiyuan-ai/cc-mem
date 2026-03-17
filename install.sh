@@ -1,6 +1,6 @@
 #!/bin/bash
-# CC-Mem 插件安装脚本
-# 用法: curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install.sh | bash
+# CC-Mem Plugin Installation Script
+# Usage: curl -sSL https://raw.githubusercontent.com/haiyuan-ai/cc-mem/main/install.sh | bash
 
 set -e
 
@@ -35,16 +35,16 @@ rollback_install() {
 
 trap 'rollback_install' EXIT
 
-echo "📦 安装 CC-Mem (${CHANNEL})..."
+echo "📦 Installing CC-Mem (${CHANNEL})..."
 
-# 检查依赖
+# Check dependencies
 if ! command -v git &> /dev/null; then
-    echo "❌ 错误: 需要安装 git"
+    echo "❌ Error: git is required"
     exit 1
 fi
 
 if ! command -v jq &> /dev/null; then
-    echo "⚠️  警告: 未检测到 jq。将尝试使用 Python 处理插件注册，但 hooks 自动注入/捕获能力仍建议安装 jq。"
+    echo "⚠️  Warning: jq not detected. Will try using Python for plugin registration, but hooks auto-injection/capture features recommend installing jq."
     HAS_JQ=false
 else
     HAS_JQ=true
@@ -56,22 +56,22 @@ else
     HAS_PYTHON=true
 fi
 
-# 1. 克隆仓库到临时目录，成功后再替换现有安装
+# 1. Clone repo to temp dir, then replace existing install
 if [ -d "$INSTALL_DIR" ]; then
-    echo "  检测到现有安装，准备安全更新..."
+    echo "  Detected existing installation, preparing safe update..."
 fi
 
 mkdir -p "${CLAUDE_DIR}/marketplaces"
 TMP_INSTALL_DIR=$(mktemp -d "${CLAUDE_DIR}/marketplaces/.${MARKETPLACE_NAME}.tmp.XXXXXX")
-echo "  克隆仓库..."
+echo "  Cloning repository..."
 git clone --depth 1 "https://github.com/${OWNER}/${REPO}.git" "$TMP_INSTALL_DIR"
 
 if [ ! -x "$TMP_INSTALL_DIR/bin/ccmem-cli.sh" ]; then
-    echo "❌ 错误: 克隆结果不完整，缺少 bin/ccmem-cli.sh"
+    echo "❌ Error: Clone incomplete, missing bin/ccmem-cli.sh"
     exit 1
 fi
 
-# 1.1 确保脚本具有执行权限（跨平台 clone 后更稳）
+# 1.1 Ensure scripts have execute permission (more stable across platforms after clone)
 chmod +x "$TMP_INSTALL_DIR"/bin/*.sh 2>/dev/null || true
 chmod +x "$TMP_INSTALL_DIR"/hooks/*.sh 2>/dev/null || true
 chmod +x "$TMP_INSTALL_DIR"/mcp/*.py 2>/dev/null || true
@@ -86,24 +86,24 @@ TMP_INSTALL_DIR=""
 cleanup_backup_install
 BACKUP_INSTALL_DIR=""
 
-# 2. 初始化数据库
-echo "  初始化数据库..."
+# 2. Initialize database
+echo "  Initializing database..."
 "${INSTALL_DIR}/bin/ccmem-cli.sh" init 2>/dev/null || true
 
-# 2.5 安装 Skill
-echo "  安装 Skill..."
+# 2.5 Install Skill
+echo "  Installing Skill..."
 SKILL_DIR="${HOME}/.claude/skills"
 SKILL_SOURCE="${INSTALL_DIR}/skill/cc-mem.md"
 mkdir -p "$SKILL_DIR"
 if [ -f "$SKILL_SOURCE" ]; then
     cp "$SKILL_SOURCE" "$SKILL_DIR/cc-mem.md"
-    echo "    ✅ Skill 安装成功"
+    echo "    ✅ Skill installed"
 else
-    echo "    ⚠️  Skill 文件不存在，跳过"
+    echo "    ⚠️  Skill file not found, skipping"
 fi
 
-# 3. 注册 Marketplace
-echo "  注册 marketplace..."
+# 3. Register Marketplace
+echo "  Registering marketplace..."
 MARKETPLACES_FILE="${CLAUDE_DIR}/known_marketplaces.json"
 mkdir -p "${CLAUDE_DIR}"
 
@@ -111,12 +111,12 @@ if [ ! -f "$MARKETPLACES_FILE" ]; then
     echo '{}' > "$MARKETPLACES_FILE"
 fi
 
-# 生成 ISO 8601 时间戳（兼容 macOS 和 Linux）
+# Generate ISO 8601 timestamp (compatible with macOS and Linux)
 if date --version 2>/dev/null | grep -q GNU; then
     # Linux
     TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
 else
-    # macOS - %3N 不可用，使用秒级精度
+    # macOS - %3N not available, use second-level precision
     TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fi
 
@@ -130,11 +130,11 @@ if [ "$HAS_JQ" = true ]; then
         }
     ' "$MARKETPLACES_FILE" > "$TMP_FILE" && mv "$TMP_FILE" "$MARKETPLACES_FILE"
 else
-    # 基本 JSON 处理（无 jq）
+    # Basic JSON handling (no jq)
     cat > /tmp/ccmem_marketplace.json << EOF
 {"${MARKETPLACE_NAME}":{"source":{"source":"github","repo":"${OWNER}/${REPO}"},"installLocation":"${INSTALL_DIR}","lastUpdated":"${TIMESTAMP}"}}
 EOF
-    # 简单合并（假设文件格式正确）
+    # Simple merge (assume file format is correct)
     if [ "$HAS_PYTHON" = true ]; then
     python3 -c "
 import json, sys
@@ -145,14 +145,14 @@ with open('/tmp/ccmem_marketplace.json', 'r') as f:
 data.update(new_data)
 with open('$MARKETPLACES_FILE', 'w') as f:
     json.dump(data, f, indent=2)
-" 2>/dev/null || echo "⚠️  请手动编辑 ${MARKETPLACES_FILE} 添加 marketplace 配置"
+" 2>/dev/null || echo "⚠️  Please manually edit ${MARKETPLACES_FILE} to add marketplace config"
     else
-        echo "⚠️  未检测到 python3，无法自动写入 ${MARKETPLACES_FILE}，请按 README 手动添加 marketplace 配置"
+        echo "⚠️  python3 not detected, cannot auto-write ${MARKETPLACES_FILE}. Please manually add marketplace config per README"
     fi
 fi
 
-# 4. 注册已安装插件
-echo "  注册已安装插件..."
+# 4. Register installed plugin
+echo "  Registering installed plugin..."
 INSTALLED_FILE="${CLAUDE_DIR}/installed_plugins.json"
 
 if [ ! -f "$INSTALLED_FILE" ]; then
@@ -192,36 +192,36 @@ if 'plugins' not in data:
 data['plugins'].update(new_data)
 with open('$INSTALLED_FILE', 'w') as f:
     json.dump(data, f, indent=2)
-" 2>/dev/null || echo "⚠️  请手动编辑 ${INSTALLED_FILE} 添加插件配置"
+" 2>/dev/null || echo "⚠️  Please manually edit ${INSTALLED_FILE} to add plugin config"
     else
-        echo "⚠️  未检测到 python3，无法自动写入 ${INSTALLED_FILE}，请按 README 手动添加已安装插件配置"
+        echo "⚠️  python3 not detected, cannot auto-write ${INSTALLED_FILE}. Please manually add installed plugin config per README"
     fi
 fi
 
 echo ""
-echo "✅ CC-Mem ${DISPLAY_VERSION} 安装完成！"
+echo "✅ CC-Mem ${DISPLAY_VERSION} installation complete!"
 echo ""
-echo "📍 安装位置: ${INSTALL_DIR}"
-echo "🎯 Skill 位置: ~/.claude/skills/cc-mem.md"
+echo "📍 Install location: ${INSTALL_DIR}"
+echo "🎯 Skill location: ~/.claude/skills/cc-mem.md"
 echo ""
-echo "🚀 使用方法:"
-echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh status    # 查看状态"
-echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh --help    # 查看帮助"
-echo "   Skill: /cc-mem list                             # 列出记忆"
-echo "   Skill: /cc-mem status                           # 查看状态"
-echo "   Skill: /ccmem search <关键词>                   # 搜索记忆"
+echo "🚀 Quick start:"
+echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh status    # Check status"
+echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh --help    # Show help"
+echo "   Skill: /cc-mem list                             # List memories"
+echo "   Skill: /cc-mem status                           # Check status"
+echo "   Skill: /ccmem search <keyword>                  # Search memories"
 if [ "$HAS_JQ" = false ]; then
     echo ""
-    echo "⚠️  建议补装 jq 以启用完整 hooks 能力："
+    echo "⚠️  Recommended: install jq for full hooks capabilities:"
     echo "   macOS: brew install jq"
     echo "   Ubuntu/Debian: sudo apt-get install jq"
 fi
 echo ""
-echo "⚠️  请重启 Claude Code 以激活 hooks 和 Skill:"
-echo "   1. 按 Ctrl+D 或输入 exit"
-echo "   2. 重新运行 claude"
+echo "⚠️  Please restart Claude Code to activate hooks and Skill:"
+echo "   1. Press Ctrl+D or type exit"
+echo "   2. Run claude again"
 echo ""
-echo "📋 重启后运行:"
-echo "   /plugin          - 查看插件状态"
-echo "   /cc-mem          - 使用 Skill 快捷命令"
+echo "📋 After restart:"
+echo "   /plugin          - Check plugin status"
+echo "   /cc-mem          - Use Skill shortcuts"
 trap - EXIT

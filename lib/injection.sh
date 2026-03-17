@@ -502,11 +502,11 @@ EOF
     if [ -n "$high_value_memories" ]; then
         local main_category
         main_category=$(echo "$high_value_memories" | head -1 | cut -d"$INJECTION_FIELD_SEP" -f5)
-        echo "- 最近工作集中在：${main_category:-项目开发}"
-        echo "- 当前上下文重点：查看下方高价值记忆"
+        echo "- Recent work focus: ${main_category:-project development}"
+        echo "- Current context: See high-value memories below"
     else
-        echo "- 暂无历史记忆记录"
-        echo "- 建议先进行工作，记忆会自动捕获"
+        echo "- No historical memory records"
+        echo "- Start working and memories will be captured automatically"
     fi
 
     echo ""
@@ -522,7 +522,7 @@ EOF
             i=$((i + 1))
         done
     else
-        echo "（无）"
+        echo "(none)"
     fi
 
     if [ -n "$related_memories" ]; then
@@ -539,9 +539,9 @@ EOF
 
     if [ -n "$last_session" ]; then
         echo "- stopped at: $last_session"
-        echo "- next likely step: 继续当前工作流"
+        echo "- next likely step: continue current workflow"
     else
-        echo "- 无最近会话记录"
+        echo "- no recent session records"
     fi
 
     if should_include_timeline_hint "$project_path"; then
@@ -552,8 +552,8 @@ EOF
 
     echo ""
     echo "If more detail is needed"
-    echo "- search: 查相关关键词"
-    echo "- timeline: 看某条记忆前后脉络"
-    echo "- get: 查看单条完整内容"
+    echo "- search: find relevant keywords"
+    echo "- timeline: view context around a memory"
+    echo "- get: view full content of a single entry"
     echo "</cc-mem-context>"
 }

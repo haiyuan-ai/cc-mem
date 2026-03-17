@@ -1,10 +1,10 @@
 #!/bin/bash
-# CC-Mem CLI - 简易记忆管理工具
-# 用法：ccmem-cli.sh <command> [options]
+# CC-Mem CLI - Lightweight memory management tool
+# Usage: ccmem-cli.sh <command> [options]
 
 set -e
 
-# 恢复 PATH（如果缺少核心工具）
+# Restore PATH (if core tools are missing)
 if ! command -v dirname &> /dev/null; then
     export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 fi
@@ -37,25 +37,25 @@ build_default_summary() {
 }
 
 print_unknown_option() {
-    echo "未知选项：$1"
+    echo "Unknown option: $1"
     return 1
 }
 
 print_command_usage() {
-    echo "用法：ccmem $1"
+    echo "Usage: ccmem $1"
 }
 
 handle_store_memory_result() {
     local id="$1"
     local prefix="${2:-}"
     local private_warning="${3:-}"
-    local success_message="${4:-记忆已存储}"
+    local success_message="${4:-Memory stored}"
     if [[ "$id" == duplicate:* ]]; then
-        echo "${prefix}跳过：内容已存在（重复记忆 ID: ${id#duplicate:}）"
+        echo "${prefix}Skipped: Content already exists (duplicate memory ID: ${id#duplicate:})"
         return 0
     fi
     if [[ "$id" == error:* ]]; then
-        echo "${prefix}错误：存储记忆失败 - ${id#error:}"
+        echo "${prefix}Error: Failed to store memory - ${id#error:}"
         return 1
     fi
     if [ -n "$private_warning" ]; then
@@ -141,15 +141,15 @@ print_failed_queue_summary() {
     local latest_time="none"
     local hook_summary=""
 
-    echo "失败队列：$queue_dir"
+    echo "Failed queue: $queue_dir"
     if [ ! -d "$queue_dir" ]; then
-        echo "  状态：空"
+        echo "  Status: empty"
         return
     fi
 
     total_count=$(find "$queue_dir" -type f -name 'failed_*' 2>/dev/null | wc -l | tr -d ' ')
     if [ "$total_count" = "0" ]; then
-        echo "  状态：空"
+        echo "  Status: empty"
         return
     fi
 
@@ -160,9 +160,9 @@ print_failed_queue_summary() {
     latest_time=$(format_epoch_local "$latest_epoch")
     hook_summary=$(find "$queue_dir" -type f -name 'failed_*' 2>/dev/null | sed -E 's|.*/failed_([^_]+).*|\1|' | sort | uniq -c | awk '{printf "%s=%s ", $2, $1}' | sed 's/ $//')
 
-    echo "  文件数：$total_count"
-    echo "  最近失败：$latest_time"
-    echo "  Hook 分布：${hook_summary:-unknown}"
+    echo "  Files: $total_count"
+    echo "  Latest failure: $latest_time"
+    echo "  Hook distribution: ${hook_summary:-unknown}"
 }
 
 print_recent_cleanup_summary() {
@@ -171,9 +171,9 @@ print_recent_cleanup_summary() {
     local latest_cleanup=""
     local latest_result=""
 
-    echo "最近 Cleanup："
+    echo "Recent cleanup:"
     if [ ! -f "$debug_log" ]; then
-        echo "  状态：无记录"
+        echo "  Status: no records"
         return
     fi
 
@@ -181,70 +181,70 @@ print_recent_cleanup_summary() {
     latest_result=$(grep '\[cleanup\].*deleted=' "$debug_log" 2>/dev/null | tail -1 || true)
 
     if [ -z "$latest_cleanup" ] && [ -z "$latest_result" ]; then
-        echo "  状态：无记录"
+        echo "  Status: no records"
         return
     fi
 
     if [ -n "$latest_cleanup" ]; then
-        echo "  最近触发：$latest_cleanup"
+        echo "  Latest trigger: $latest_cleanup"
     fi
     if [ -n "$latest_result" ]; then
-        echo "  最近结果：$latest_result"
+        echo "  Latest result: $latest_result"
     fi
 }
 
 show_help() {
     cat <<EOF
-CC-Mem CLI - Claude Code 记忆管理工具
+CC-Mem CLI - Memory management tool for Claude Code
 
-用法：ccmem-cli.sh <command> [options]
+Usage: ccmem-cli.sh <command> [options]
 
-命令:
-  init              初始化数据库
-  capture           捕获当前会话记忆
-  search            搜索记忆（三层检索第一步）
-  recall            基于 query 生成 recall 注入块
-  timeline          获取时间线上下文（三层检索第二步）
-  get               获取记忆详情（三层检索第三步）
-  history           查看记忆历史
-  list              列出最近的记忆
-  export            导出记忆到 Markdown
-  retry             重试失败队列中的记忆写入
-  inject-context    生成开场注入上下文
-  projects          列出所有项目
-  related-projects  列出关联项目
-  link-projects     手动建立项目关联
-  unlink-projects   删除项目关联
-  refresh-project-links 刷新自动项目关联
-  cleanup           清理过期记忆（默认安全模式）
-  status            显示记忆库状态
-  stats             显示最近记忆统计
-  help              显示此帮助信息
+Commands:
+  init              Initialize database
+  capture           Capture current session memory
+  search            Search memories (3-step retrieval #1)
+  recall            Generate query-aware recall context
+  timeline          Get timeline context (3-step retrieval #2)
+  get               Get memory details (3-step retrieval #3)
+  history           View memory history
+  list              List recent memories
+  export            Export memories to Markdown
+  retry             Retry failed memory writes
+  inject-context    Generate session start context
+  projects          List all projects
+  related-projects  List related projects
+  link-projects     Manually link projects
+  unlink-projects   Remove project link
+  refresh-project-links  Refresh auto project links
+  cleanup           Cleanup expired memories (safe mode default)
+  status            Show memory database status
+  stats             Show recent memory statistics
+  help              Show this help
 
-示例:
+Examples:
   ccmem-cli.sh search -p "/path/to/project" -q "API endpoint"
   ccmem-cli.sh recall -p "/path/to/project" -q "SQLite timeout"
   ccmem-cli.sh timeline -a mem_xxx -b 3 -A 3
   ccmem-cli.sh get mem_123 mem_456
   ccmem-cli.sh capture -c "decision" -t "important,core"
-  echo "重要模式" | ccmem-cli.sh capture -c "pattern" -t "react,hooks" -m "自定义摘要"
+  echo "important pattern" | ccmem-cli.sh capture -c "pattern" -t "react,hooks" -m "custom summary"
   ccmem-cli.sh export -o "~/exports"
   ccmem-cli.sh retry --dry-run
   ccmem-cli.sh related-projects -p "/path/to/project"
   ccmem-cli.sh stats --days 7
-选项:
-  -p, --project     项目路径
-  -c, --category    记忆类别 (decision|solution|pattern|debug|context)
-  -t, --tags        标签（逗号分隔）
-  -m, --summary     自定义摘要
-  --concepts        概念标签（how-it-works|problem-solution|gotcha|pattern|trade-off|why-it-exists|what-changed）
-  -q, --query       检索关键词
-  -o, --output      导出目录（默认：$HOME/cc-mem-export）
-  -l, --limit       限制结果数量（默认：10）
-  --hook            仅处理指定 hook 的失败项
-  --dry-run         只显示将要处理的失败项，不执行写入
-  -s, --session     会话 ID
-  -h, --help        显示帮助
+Options:
+  -p, --project     Project path
+  -c, --category    Memory category (decision|solution|pattern|debug|context)
+  -t, --tags        Tags (comma-separated)
+  -m, --summary     Custom summary
+  --concepts        Concept tags (how-it-works|problem-solution|gotcha|pattern|trade-off|why-it-exists|what-changed)
+  -q, --query       Search query
+  -o, --output      Export directory (default: \$HOME/cc-mem-export)
+  -l, --limit       Limit results (default: 10)
+  --hook            Only process failed items for specified hook
+  --dry-run         Show what would be processed without writing
+  -s, --session     Session ID
+  -h, --help        Show help
 
 EOF
 }
@@ -289,37 +289,37 @@ cmd_capture() {
         shift
     done
 
-    echo "捕获记忆..."
-    echo "  会话 ID: $session_id"
-    echo "  项目路径：${project_path:-未指定}"
-    echo "  类别：$category"
-    echo "  标签：${tags:-无}"
-    echo "  概念：${concepts:-无}"
+    echo "Capturing memory..."
+    echo "  Session ID: $session_id"
+    echo "  Project path: ${project_path:-not specified}"
+    echo "  Category: $category"
+    echo "  Tags: ${tags:-none}"
+    echo "  Concepts: ${concepts:-none}"
 
-    # 如果没有指定项目路径，使用当前目录
+    # If project path not specified, use current directory
     project_path="$(resolve_effective_project_path "$project_path")"
 
-    # 更新项目访问记录
+    # Update project access record
     update_project_access "$project_path" "$(basename "$project_path")" "$tags"
 
-    # 创建/更新会话
+    # Create/update session
     upsert_session "$session_id" "$project_path"
 
-    # 如果从 stdin 读取内容
+    # If reading from stdin
     if [ ! -t 0 ]; then
         local content=$(cat)
         if [ -n "$content" ]; then
-            # 检查并过滤私有内容
+            # Check and filter private content
             local filtered_content="$content"
             local private_warning=""
 
             if has_private_content "$content"; then
                 filtered_content=$(filter_private_content "$content")
-                private_warning="  警告：已过滤 <private> 标签内容"
+                private_warning="  Warning: Filtered <private> tag content"
 
-                # 如果过滤后内容为空，不保存
+                # If filtered content is empty, don't save
                 if [ -z "$(echo "$filtered_content" | tr -d '[:space:]')" ]; then
-                    echo "  跳过：过滤私有内容后无有效内容"
+                    echo "  Skipped: No valid content after filtering private tags"
                     return
                 fi
             fi
@@ -330,25 +330,25 @@ cmd_capture() {
                 summary=$(build_default_summary "$filtered_content")
             fi
 
-            # 如果没有指定 concepts，尝试自动识别
+            # If concepts not specified, try auto-detect
             if [ -z "$concepts" ]; then
                 concepts=$(detect_concepts "$filtered_content")
                 if [ -n "$concepts" ]; then
-                    echo "  自动识别概念：$concepts"
+                    echo "  Auto-detected concepts: $concepts"
                 fi
             fi
 
             local id=$(store_memory "$session_id" "$project_path" "$category" "$filtered_content" "$summary" "$tags" "$concepts" "$source" "$memory_kind" "$auto_inject_policy" "$project_root" "$expires_at" "$classification_confidence" "$classification_reason" "$classification_source" "$classification_version")
 
-            if ! handle_store_memory_result "$id" "  " "$private_warning" "记忆 ID: $id"; then
+            if ! handle_store_memory_result "$id" "  " "$private_warning" "Memory ID: $id"; then
                 return 1
             fi
-            echo "记忆已存储"
+            echo "Memory stored"
             return 0
         fi
     fi
 
-    echo "没有捕获到内容（从 stdin 为空）"
+    echo "No content captured (stdin is empty)"
 }
 cmd_search() {
     local project_path=""
@@ -372,11 +372,11 @@ cmd_search() {
 
     project_path="$(resolve_effective_project_path "$project_path")"
 
-    echo "搜索记忆..."
-    echo "  项目路径：$project_path"
-    echo "  关键词：${query:-全部}"
-    echo "  类别：${category:-全部}"
-    echo "  限制：$limit (最小返回：$min_results)"
+    echo "Searching memories..."
+    echo "  Project path: $project_path"
+    echo "  Query: ${query:-all}"
+    echo "  Category: ${category:-all}"
+    echo "  Limit: $limit (min results: $min_results)"
     echo ""
 
     # 使用分阶段检索（带充分性检查）
@@ -389,9 +389,9 @@ cmd_search() {
 
     if [ -n "$query" ]; then
         if contains_cjk "$query" && [ "${RETRIEVE_CJK_FALLBACK_USED:-0}" -eq 1 ]; then
-            echo "  中文回退：已使用"
+            echo "  CJK fallback: used"
         else
-            echo "  中文回退：未使用"
+            echo "  CJK fallback: not used"
         fi
         echo ""
     fi
@@ -411,12 +411,12 @@ cmd_recall() {
             -l|--limit) limit="$2"; shift ;;
             -h|--help)
                 print_command_usage "recall -p <project> -q <query> [-l limit]"
-                echo "生成 query-aware recall 注入块"
+                echo "Generate query-aware recall context block"
                 echo ""
-                echo "选项："
-                echo "  -p, --project    项目路径（默认当前目录）"
-                echo "  -q, --query      当前请求关键词"
-                echo "  -l, --limit      recall 结果数量（默认来自配置，缺省 3）"
+                echo "Options:"
+                echo "  -p, --project    Project path (default: current directory)"
+                echo "  -q, --query      Current request keywords"
+                echo "  -l, --limit      Recall result count (default from config, fallback 3)"
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;
@@ -477,22 +477,22 @@ cmd_export() {
         shift
     done
 
-    # 配置优先级：命令行参数 > 配置文件 > 默认值
+    # Config priority: CLI args > config file > defaults
     if [ -z "$output_dir" ]; then
         output_dir=$(get_markdown_export_path)
 
-        # 最终默认值
+        # Final default
         if [ -z "$output_dir" ] || [ "$output_dir" = "null" ]; then
             output_dir="$HOME/cc-mem-export"
         fi
     fi
 
-    echo "导出记忆到：$output_dir"
+    echo "Exporting memories to: $output_dir"
 
-    # 使用安全 Markdown 导出，避免分隔符污染正文
+    # Use safe Markdown export to avoid delimiter pollution
     export_to_markdown_safe "$output_dir" "$project_path"
 
-    echo "导出完成"
+    echo "Export complete"
 }
 
 retry_map_hook_metadata() {
@@ -765,7 +765,7 @@ cmd_retry() {
             --hook) hook_filter="$2"; shift ;;
             -h|--help)
                 print_command_usage "retry [--dry-run] [--limit count] [--hook name]"
-                echo "重试失败队列中的记忆写入。"
+                echo "Retry failed capture queue items."
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;
@@ -775,7 +775,7 @@ cmd_retry() {
 
     queue_dir=$(get_failed_capture_queue_dir)
     if [ ! -d "$queue_dir" ]; then
-        echo "失败队列为空"
+        echo "Failed queue is empty"
         return 0
     fi
 
@@ -784,7 +784,7 @@ cmd_retry() {
     done < <(find "$queue_dir" -type f -name 'failed_*' | sort)
 
     if [ "${#files[@]}" -eq 0 ]; then
-        echo "失败队列为空"
+        echo "Failed queue is empty"
         return 0
     fi
 
@@ -801,7 +801,7 @@ cmd_retry() {
         fi
 
         if [ "$dry_run" = true ]; then
-            echo "将处理：$(basename "$file_path") hook=${hook_name:-unknown}"
+            echo "Will process: $(basename "$file_path") hook=${hook_name:-unknown}"
             continue
         fi
 
@@ -818,26 +818,26 @@ cmd_retry() {
                 ;;
             fail:*)
                 failed=$((failed + 1))
-                echo "重试失败：$(basename "$file_path") ${result#fail:}"
+                echo "Retry failed: $(basename "$file_path") ${result#fail:}"
                 ;;
             *)
                 failed=$((failed + 1))
-                echo "重试失败：$(basename "$file_path") unknown"
+                echo "Retry failed: $(basename "$file_path") unknown"
                 ;;
         esac
     done
 
     if [ "$dry_run" = true ]; then
-        echo "将处理失败项：$matched"
+        echo "Will process failed items: $matched"
         return 0
     fi
 
-    echo "扫描失败项：$scanned"
-    echo "匹配处理：$matched"
-    echo "成功恢复：$recovered"
-    echo "重复跳过：$duplicates"
-    echo "跳过：$skipped"
-    echo "恢复失败：$failed"
+    echo "Scanned: $scanned"
+    echo "Matched: $matched"
+    echo "Recovered: $recovered"
+    echo "Duplicates skipped: $duplicates"
+    echo "Skipped: $skipped"
+    echo "Failed: $failed"
 }
 
 cmd_cleanup() {
@@ -852,12 +852,12 @@ cmd_cleanup() {
             --limit) limit="$2"; shift ;;
             -h|--help)
                 print_command_usage "cleanup [-d days] [--limit count] [--aggressive]"
-                echo "默认执行安全清理，只删除低优先级临时记忆。"
+                echo "Default: safe cleanup, only removes low-priority temporary memories."
                 echo ""
-                echo "选项："
-                echo "  -d, --days        超龄阈值天数（默认 30）"
-                echo "  --limit           单次最多删除条数（默认 100）"
-                echo "  --aggressive      扩大到所有已过期记忆和超龄 working 记忆"
+                echo "Options:"
+                echo "  -d, --days        Age threshold in days (default: 30)"
+                echo "  --limit           Max items to delete per run (default: 100)"
+                echo "  --aggressive      Also remove expired and aged working memories"
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;
@@ -869,19 +869,19 @@ cmd_cleanup() {
     deleted_count=$(cleanup_memories "$mode" "$days" "$limit")
 
     if [[ ! "$deleted_count" =~ ^[0-9]+$ ]]; then
-        echo "错误：清理失败 - $deleted_count"
+        echo "Error: Cleanup failed - $deleted_count"
         return 1
     fi
 
     if [ "$mode" = "aggressive" ]; then
-        echo "已清理 $deleted_count 条过期/超龄记忆（aggressive，days=$days，limit=$limit）"
+        echo "Cleaned $deleted_count expired/aged memories (aggressive, days=$days, limit=$limit)"
     else
-        echo "已清理 $deleted_count 条低优先级临时记忆（safe，days=$days，limit=$limit）"
+        echo "Cleaned $deleted_count low-priority temporary memories (safe, days=$days, limit=$limit)"
     fi
 }
 
 cmd_projects() {
-    echo "=== 项目列表 ==="
+    echo "=== Project List ==="
     echo ""
     list_projects
 }
@@ -911,8 +911,8 @@ cmd_related_projects() {
 
     local project_root
     project_root=$(resolve_project_root "$project_path")
-    echo "=== 关联项目 ==="
-    echo "主项目：$project_root"
+    echo "=== Related Projects ==="
+    echo "Primary: $project_root"
     echo ""
     printf "%-40s %-14s %-8s %s\n" "target_root" "link_type" "strength" "reason"
     list_related_projects "$project_root" "$limit" "$min_strength" | awk -F'|' '
@@ -945,7 +945,7 @@ cmd_link_projects() {
                 elif [ -z "$target_root" ]; then
                     target_root="$1"
                 else
-                    echo "未知参数：$1"
+                    echo "Unknown argument: $1"
                     return 1
                 fi
                 ;;
@@ -954,14 +954,14 @@ cmd_link_projects() {
     done
 
     if [ -z "$source_root" ] || [ -z "$target_root" ]; then
-        print_command_usage "link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason 文本] [--one-way]"
+        print_command_usage "link-projects <source_root> <target_root> [--type manual] [--strength 95] [--reason text] [--one-way]"
         return 1
     fi
 
     link_projects "$source_root" "$target_root" "$link_type" "$strength" "$reason" "$bidirectional"
-    echo "项目关联已建立：$source_root -> $target_root ($link_type, strength=$strength)"
+    echo "Project link created: $source_root -> $target_root ($link_type, strength=$strength)"
     if [ "$bidirectional" = "1" ]; then
-        echo "已同步建立反向关联"
+        echo "Bidirectional link also created"
     fi
 }
 
@@ -983,7 +983,7 @@ cmd_unlink_projects() {
                 elif [ -z "$target_root" ]; then
                     target_root="$1"
                 else
-                    echo "未知参数：$1"
+                    echo "Unknown argument: $1"
                     return 1
                 fi
                 ;;
@@ -997,9 +997,9 @@ cmd_unlink_projects() {
     fi
 
     unlink_projects "$source_root" "$target_root" "$bidirectional"
-    echo "项目关联已删除：$source_root -> $target_root"
+    echo "Project link removed: $source_root -> $target_root"
     if [ "$bidirectional" = "1" ]; then
-        echo "已同步删除反向关联"
+        echo "Bidirectional link also removed"
     fi
 }
 
@@ -1021,7 +1021,7 @@ cmd_refresh_project_links() {
     project_path="$(resolve_effective_project_path "$project_path")"
 
     refresh_project_links "$project_path"
-    echo "已刷新项目关联：$(resolve_project_root "$project_path")"
+    echo "Project links refreshed: $(resolve_project_root "$project_path")"
 }
 
 cmd_history() {
@@ -1036,7 +1036,7 @@ cmd_history() {
             -r|--recent) recent=true; shift ;;
             -h|--help) show_help; return ;;
             *)
-                # 如果没有指定参数，默认为 memory_id
+                # If no flag specified, treat as memory_id
                 if [ -z "$memory_id" ]; then
                     memory_id="$1"
                 fi
@@ -1046,15 +1046,15 @@ cmd_history() {
     done
 
     if [ "$recent" = true ]; then
-        echo "=== 最近记忆历史 ==="
+        echo "=== Recent Memory History ==="
         echo ""
         get_recent_history "$limit"
     elif [ -n "$memory_id" ]; then
-        echo "=== 记忆 $memory_id 的历史 ==="
+        echo "=== History for $memory_id ==="
         echo ""
         get_memory_history "$memory_id" "$limit"
     else
-        echo "=== 最近记忆历史 ==="
+        echo "=== Recent Memory History ==="
         echo ""
         get_recent_history "$limit"
     fi
@@ -1081,9 +1081,9 @@ cmd_timeline() {
         return 1
     fi
 
-    echo "=== 时间线上下文 ==="
-    echo "  锚点：$anchor_id"
-    echo "  前后范围：$depth_before / $depth_after"
+    echo "=== Timeline Context ==="
+    echo "  Anchor: $anchor_id"
+    echo "  Range: $depth_before / $depth_after"
     echo ""
 
     get_timeline "$anchor_id" "$depth_before" "$depth_after"
@@ -1105,7 +1105,7 @@ cmd_get() {
         return 1
     fi
 
-    echo "=== 记忆详情 ==="
+    echo "=== Memory Details ==="
     echo ""
 
     for id in "${memory_ids[@]}"; do
@@ -1116,20 +1116,20 @@ cmd_get() {
 }
 
 cmd_status() {
-    echo "=== CC-Mem 状态 ==="
+    echo "=== CC-Mem Status ==="
     echo ""
-    echo "数据库：$CCMEM_MEMORY_DB"
+    echo "Database: $CCMEM_MEMORY_DB"
     if [ -f "$CCMEM_MEMORY_DB" ]; then
         local mem_count=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT COUNT(*) FROM memories;")
         local session_count=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT COUNT(*) FROM sessions;")
         local project_count=$(sqlite3 "$CCMEM_MEMORY_DB" "SELECT COUNT(*) FROM projects;")
 
-        # 兼容 macOS 和 Linux 的 du 命令
+        # Compatible with macOS and Linux du
         local db_size=""
         if du -h "$CCMEM_MEMORY_DB" &> /dev/null; then
             db_size=$(du -h "$CCMEM_MEMORY_DB" | cut -f1)
         elif du -k "$CCMEM_MEMORY_DB" &> /dev/null; then
-            # macOS 回退方案
+            # macOS fallback
             local size_kb=$(du -k "$CCMEM_MEMORY_DB" | cut -f1)
             if [ "$size_kb" -lt 1024 ]; then
                 db_size="${size_kb}K"
@@ -1137,7 +1137,7 @@ cmd_status() {
                 db_size="$((size_kb / 1024))M"
             fi
         else
-            # 使用 stat 命令
+            # Use stat 命令
             if stat -f%z "$CCMEM_MEMORY_DB" &> /dev/null; then
                 local size_bytes=$(stat -f%z "$CCMEM_MEMORY_DB")
                 db_size="$((size_bytes / 1024))K"
@@ -1149,12 +1149,12 @@ cmd_status() {
             fi
         fi
 
-        echo "  记忆数量：$mem_count"
-        echo "  会话数量：$session_count"
-        echo "  项目数量：$project_count"
-        echo "  数据库大小：$db_size"
+        echo "  Memories: $mem_count"
+        echo "  Sessions: $session_count"
+        echo "  Projects: $project_count"
+        echo "  DB size: $db_size"
     else
-        echo "  状态：未初始化"
+        echo "  Status: not initialized"
     fi
     echo ""
 
@@ -1163,8 +1163,8 @@ cmd_status() {
     print_recent_cleanup_summary
     echo ""
 
-    echo "配置目录：$CONFIG_DIR"
-    echo "脚本目录：$SCRIPT_DIR"
+    echo "Config dir: $CONFIG_DIR"
+    echo "Script dir: $SCRIPT_DIR"
 }
 
 cmd_stats() {
@@ -1193,11 +1193,11 @@ cmd_stats() {
             -p|--project) project_path="$2"; shift ;;
             -h|--help)
                 print_command_usage "stats [--days n] [--project path]"
-                echo "显示最近记忆统计"
+                echo "Show recent memory statistics"
                 echo ""
-                echo "选项："
-                echo "  -d, --days       统计最近天数（默认 7）"
-                echo "  -p, --project    仅统计指定项目"
+                echo "Options:"
+                echo "  -d, --days       Statistics for last N days (default: 7)"
+                echo "  -p, --project    Only for specified project"
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;
@@ -1206,7 +1206,7 @@ cmd_stats() {
     done
 
     if [[ ! "$days" =~ ^[0-9]+$ ]] || [ "$days" -le 0 ]; then
-        echo "错误：days 必须是正整数"
+        echo "Error: days must be a positive integer"
         return 1
     fi
 
@@ -1261,28 +1261,28 @@ EOF
         active_days=$(printf "%s\n" "$daily_rows" | grep -c . | tr -d ' ')
     fi
 
-    echo "=== CC-Mem 统计 ==="
+    echo "=== CC-Mem Stats ==="
     echo ""
-    echo "范围：最近 ${days} 天"
-    echo "项目：${project_root:-全部项目}"
+    echo "Range: last ${days} days"
+    echo "Project: ${project_root:-all projects}"
     echo ""
-    echo "总览："
-    echo "  记忆数量：$mem_count"
-    echo "  平均每日新增：$avg_per_day"
-    echo "  活跃天数：$active_days/$days"
-    echo "  Content 字节：$content_bytes"
-    echo "  Preview 字节：$preview_bytes"
-    echo "  Preview 占比：$preview_ratio"
-    echo "  分层分布：durable=$durable_count working=$working_count temporary=$temporary_count"
-    echo "  分层占比：durable=$durable_ratio working=$working_ratio temporary=$temporary_ratio"
+    echo "Overview:"
+    echo "  Memories: $mem_count"
+    echo "  Avg per day: $avg_per_day"
+    echo "  Active days: $active_days/$days"
+    echo "  Content bytes: $content_bytes"
+    echo "  Preview bytes: $preview_bytes"
+    echo "  Preview ratio: $preview_ratio"
+    echo "  Distribution: durable=$durable_count working=$working_count temporary=$temporary_count"
+    echo "  Ratio: durable=$durable_ratio working=$working_ratio temporary=$temporary_ratio"
     echo ""
-    echo "每日明细："
+    echo "Daily breakdown:"
     if [ -z "$daily_rows" ]; then
-        echo "  （无数据）"
+        echo "  (no data)"
         return
     fi
 
-    echo "  日期 | 数量 | Preview 占比 | durable | working | temporary"
+    echo "  Date | Count | Preview ratio | durable | working | temporary"
     printf "%s\n" "$daily_rows" | while IFS='|' read -r day day_count day_content day_preview day_durable day_working day_temporary; do
         echo "  $day | $day_count | $(format_ratio_percent "$day_preview" "$day_content") | $day_durable | $day_working | $day_temporary"
     done
@@ -1299,11 +1299,11 @@ cmd_inject_context() {
             -l|--limit) limit="$2"; shift ;;
             -h|--help)
                 print_command_usage "inject-context [-p project] [-l limit]"
-                echo "生成开场注入上下文"
+                echo "Generate session start context injection"
                 echo ""
-                echo "选项："
-                echo "  -p, --project    项目路径（默认当前目录）"
-                echo "  -l, --limit      高价值记忆数量（默认来自配置，缺省 3）"
+                echo "Options:"
+                echo "  -p, --project    Project path (default: current directory)"
+                echo "  -l, --limit      High-value memory count (default from config, fallback 3)"
                 return
                 ;;
             *) print_unknown_option "$1"; return 1 ;;
@@ -1392,8 +1392,8 @@ main() {
             show_help
             ;;
         *)
-            echo "未知命令：$command"
-            echo "运行 'ccmem-cli.sh help' 查看帮助"
+            echo "Unknown command: $command"
+            echo "Run 'ccmem-cli.sh help' for usage"
             exit 1
             ;;
     esac

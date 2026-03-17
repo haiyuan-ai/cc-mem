@@ -1,16 +1,16 @@
 #!/bin/bash
-# CC-Mem FTS 修复工具
-# 用于修复 SQLite FTS5 全文索引损坏问题
+# CC-Mem FTS Repair Tool
+# For fixing SQLite FTS5 full-text index corruption issues
 #
-# 用法：
-#   ./repair-fts.sh [选项]
+# Usage:
+#   ./repair-fts.sh [options]
 #
-# 选项:
-#   --db <path>     指定数据库路径（默认：$HOME/.claude/cc-mem/memory.db）
-#   --backup        修复前备份数据库
-#   --force         强制修复，不检查状态
-#   --dry-run       只显示问题，不执行修复
-#   -h, --help      显示帮助信息
+# Options:
+#   --db <path>     Specify database path (default: $HOME/.claude/cc-mem/memory.db)
+#   --backup        Backup database before repair
+#   --force         Force repair without checking status
+#   --dry-run       Show issues only, don't repair
+#   -h, --help      Show help info
 
 set -e
 
@@ -18,13 +18,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 source "$LIB_DIR/config.sh"
 
-# 默认配置
+# Default config
 DB_PATH="$(get_memory_db_path)"
 DO_BACKUP=true
 FORCE_REPAIR=false
 DRY_RUN=false
 
-# 解析命令行参数
+# Parse command line args
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --db) DB_PATH="$2"; shift ;;
@@ -33,26 +33,26 @@ while [[ "$#" -gt 0 ]]; do
         --force) FORCE_REPAIR=true ;;
         --dry-run) DRY_RUN=true ;;
         -h|--help)
-            echo "CC-Mem FTS 修复工具"
+            echo "CC-Mem FTS Repair Tool"
             echo ""
-            echo "用法：$0 [选项]"
+            echo "Usage: $0 [options]"
             echo ""
-            echo "选项:"
-            echo "  --db <path>     指定数据库路径（默认：\$HOME/.claude/cc-mem/memory.db）"
-            echo "  --backup        修复前备份数据库（默认开启）"
-            echo "  --no-backup     不备份数据库"
-            echo "  --force         强制修复，不检查状态"
-            echo "  --dry-run       只显示问题，不执行修复"
-            echo "  -h, --help      显示帮助信息"
+            echo "Options:"
+            echo "  --db <path>     Specify database path (default: \$HOME/.claude/cc-mem/memory.db)"
+            echo "  --backup        Backup database before repair (default: on)"
+            echo "  --no-backup     Don't backup database"
+            echo "  --force         Force repair without checking status"
+            echo "  --dry-run       Show issues only, don't repair"
+            echo "  -h, --help      Show help info"
             exit 0
             ;;
-        *) echo "未知选项：$1"; exit 1 ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
     esac
     shift
 done
 
-# 检查 FTS 状态
-# 返回 0 表示 FTS 正常，返回 1 表示 FTS 异常
+# Check FTS status
+# Returns 0 if FTS is OK, 1 if FTS is abnormal
 check_fts_status() {
     local db="$1"
     local result=$(sqlite3 "$db" "SELECT COUNT(*) FROM memories_fts;" 2>&1)
@@ -60,62 +60,62 @@ check_fts_status() {
         return 1
     fi
 
-    # 额外检查：FTS 数据量是否与主表匹配
+    # Extra check: FTS data count matches main table
     local main_count=$(sqlite3 "$db" "SELECT COUNT(*) FROM memories;" 2>&1)
     local fts_count=$(sqlite3 "$db" "SELECT COUNT(*) FROM memories_fts;" 2>&1)
 
     if [ "$main_count" -gt 0 ] && [ "$fts_count" -eq 0 ]; then
-        # 主表有数据但 FTS 为空，说明触发器未工作
+        # Main table has data but FTS is empty, triggers not working
         return 1
     fi
 
     return 0
 }
 
-# 修复 FTS 全文索引
+# Repair FTS full-text index
 repair_fts() {
     local db="$1"
 
-    echo "正在修复 FTS 全文索引..."
-    echo "数据库：$db"
+    echo "Repairing FTS full-text index..."
+    echo "Database: $db"
     echo ""
 
-    # 备份数据库
+    # Backup database
     if [ "$DO_BACKUP" = true ]; then
         local backup="${db}.backup.$(date +%Y%m%d_%H%M%S)"
         cp "$db" "$backup"
-        echo "✓ 已备份数据库到：$backup"
+        echo "✓ Database backed up to: $backup"
     fi
 
     if [ "$DRY_RUN" = true ]; then
         echo ""
-        echo "[干运行模式] 将执行以下操作:"
-        echo "  1. 删除旧的 FTS 触发器"
-        echo "  2. 删除损坏的 FTS 表"
-        echo "  3. 创建新的 FTS 表"
-        echo "  4. 重新创建触发器"
-        echo "  5. 重新索引现有数据"
+        echo "[Dry-run mode] Will perform:"
+        echo "  1. Delete old FTS triggers"
+        echo "  2. Delete corrupted FTS table"
+        echo "  3. Create new FTS table"
+        echo "  4. Recreate triggers"
+        echo "  5. Reindex existing data"
         return 0
     fi
 
-    # 执行修复
+    # Execute repair
     sqlite3 "$db" <<EOF
--- 删除旧的触发器
+-- Delete old triggers
 DROP TRIGGER IF EXISTS memories_ai;
 DROP TRIGGER IF EXISTS memories_ad;
 DROP TRIGGER IF EXISTS memories_au;
 
--- 删除损坏的 FTS 表
+-- Delete corrupted FTS table
 DROP TABLE IF EXISTS memories_fts;
 
--- 创建新的 FTS 表（不使用 content 参数，减少依赖问题）
+-- Create new FTS table (no content param, fewer dependency issues)
 CREATE VIRTUAL TABLE memories_fts USING fts5(
     content,
     summary,
     tags
 );
 
--- 重新创建触发器
+-- Recreate triggers
 CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
     INSERT INTO memories_fts(rowid, content, summary, tags)
     VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
@@ -133,54 +133,54 @@ CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
     VALUES (NEW.rowid, NEW.content, NEW.summary, NEW.tags);
 END;
 
--- 将现有数据重新索引到 FTS
+-- Reindex existing data to FTS
 INSERT INTO memories_fts(rowid, content, summary, tags)
 SELECT rowid, content, summary, tags FROM memories;
 EOF
 
-    # 验证修复结果
+    # Verify repair result
     if check_fts_status "$db"; then
         local count=$(sqlite3 "$db" "SELECT COUNT(*) FROM memories_fts;")
-        echo "✓ FTS 修复成功！"
-        echo "  FTS 索引记录数：$count"
+        echo "✓ FTS repair successful!"
+        echo "  FTS index records: $count"
         return 0
     else
-        echo "✗ FTS 修复失败，可能需要手动干预"
+        echo "✗ FTS repair failed, manual intervention may be needed"
         return 1
     fi
 }
 
-# 主程序
+# Main program
 main() {
-    # 检查数据库文件是否存在
+    # Check if database file exists
     if [ ! -f "$DB_PATH" ]; then
-        echo "错误：数据库文件不存在：$DB_PATH"
-        echo "请先运行 'ccmem-cli.sh init' 初始化数据库"
+        echo "Error: Database file not found: $DB_PATH"
+        echo "Please run 'ccmem-cli.sh init' to initialize database"
         exit 1
     fi
 
-    echo "=== CC-Mem FTS 修复工具 ==="
+    echo "=== CC-Mem FTS Repair Tool ==="
     echo ""
 
-    # 检查 FTS 状态
-    echo "检查 FTS 状态..."
+    # Check FTS status
+    echo "Checking FTS status..."
     if check_fts_status "$DB_PATH"; then
-        echo "FTS 状态：正常"
+        echo "FTS status: OK"
         if [ "$FORCE_REPAIR" = false ]; then
-            echo "无需修复，退出。"
+            echo "No repair needed, exiting."
             echo ""
-            echo "如需强制修复，请使用 --force 选项"
+            echo "Use --force to force repair"
             exit 0
         else
-            echo "强制修复模式，继续执行..."
+            echo "Force repair mode, continuing..."
         fi
     else
-        echo "FTS 状态：异常"
+        echo "FTS status: abnormal"
     fi
 
     echo ""
 
-    # 执行修复
+    # Execute repair
     repair_fts "$DB_PATH"
     exit $?
 }

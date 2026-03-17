@@ -1,12 +1,12 @@
 #!/bin/bash
-# CC-Mem 一次性旧库迁移脚本
+# CC-Mem One-time Legacy Database Migration Script
 #
-# 用途：
-# - 将旧版数据库迁移到当前 1.5.1 schema
-# - 回填 project_root / source / memory_kind / auto_inject_policy
-# - 将 memories.timestamp 收敛为 timestamp_epoch
+# Purpose:
+# - Migrate old database to current 1.5.1 schema
+# - Backfill project_root / source / memory_kind / auto_inject_policy
+# - Converge memories.timestamp to timestamp_epoch
 #
-# 迁移完成后，正式运行链路不再包含兼容性迁移代码。
+# After migration completes, production runtime no longer includes compatibility migration code.
 
 set -euo pipefail
 
@@ -21,20 +21,20 @@ DB_PATH="$(get_memory_db_path)"
 
 show_help() {
     cat <<EOF
-CC-Mem 一次性旧库迁移脚本
+CC-Mem One-time Legacy Database Migration Script
 
-用法：
-  $0 [选项]
+Usage:
+  $0 [options]
 
-选项：
-  --db <path>      指定数据库路径（默认读取 config/config.json）
-  --no-backup      不备份数据库
-  --self-test      运行脚本自检
-  -h, --help       显示帮助
+Options:
+  --db <path>      Specify database path (default reads config/config.json)
+  --no-backup      Don't backup database
+  --self-test      Run script self-test
+  -h, --help       Show help
 
-说明：
-  该脚本用于一次性将旧版 memory.db 迁移到当前 schema。
-  迁移成功后，可删除本脚本；正式运行链路不再负责旧库兼容。
+Description:
+  This script performs one-time migration of old memory.db to current schema.
+  After successful migration, this script can be deleted; production runtime no longer handles old DB compatibility.
 EOF
 }
 
@@ -55,7 +55,7 @@ while [[ "$#" -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "未知选项：$1" >&2
+            echo "Unknown option: $1" >&2
             exit 1
             ;;
     esac
@@ -201,21 +201,21 @@ EOF
 
 main() {
     if [ ! -f "$DB_PATH" ]; then
-        echo "错误：数据库文件不存在：$DB_PATH" >&2
+        echo "Error: Database file not found: $DB_PATH" >&2
         exit 1
     fi
 
     local has_memories=""
     has_memories=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='memories';" 2>/dev/null || true)
     if [ "$has_memories" != "memories" ]; then
-        echo "错误：数据库中不存在 memories 表，无法迁移旧库" >&2
+        echo "Error: memories table not found in database, cannot migrate legacy DB" >&2
         exit 1
     fi
 
     if [ "$DO_BACKUP" = true ]; then
         local backup="${DB_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
         cp "$DB_PATH" "$backup"
-        echo "已备份数据库到：$backup"
+        echo "Database backed up to: $backup"
     fi
 
     ensure_column_exists "memories" "source" "source TEXT DEFAULT 'manual'"
@@ -294,7 +294,7 @@ EOF
     backfill_memory_metadata
     ensure_memories_runtime_objects
 
-    echo "旧库迁移完成：$DB_PATH"
+    echo "Legacy database migration complete: $DB_PATH"
 }
 
 run_self_test() {
@@ -341,7 +341,7 @@ INSERT INTO memories (
 )
 VALUES (
     'mem_legacy_backfill', 'legacy_session', '2026-03-07 07:39:35', NULL, '/legacy/project', 'context',
-    '旧 stop 记录', '旧 stop 记录', '旧 stop 摘要', 'stop,auto-captured',
+    'Old stop record', 'Old stop record', 'Old stop summary', 'stop,auto-captured',
     '2026-03-07 07:39:35', '2026-03-07 07:39:35'
 );
 
@@ -354,20 +354,20 @@ EOF
     main
 
     columns=$(sqlite3 "$test_db" "PRAGMA table_info(memories);" | cut -d'|' -f2 | tr '\n' ' ')
-    [[ "$columns" == *" timestamp "* ]] && { echo "SELF-TEST FAILED: 迁移后仍保留旧 timestamp 列" >&2; return 1; }
+    [[ "$columns" == *" timestamp "* ]] && { echo "SELF-TEST FAILED: Old timestamp column still exists after migration" >&2; return 1; }
 
     epoch=$(sqlite3 "$test_db" "SELECT timestamp_epoch FROM memories WHERE id='mem_legacy_backfill';")
-    [[ -n "$epoch" && "$epoch" -gt 0 ]] || { echo "SELF-TEST FAILED: 未回填 timestamp_epoch" >&2; return 1; }
+    [[ -n "$epoch" && "$epoch" -gt 0 ]] || { echo "SELF-TEST FAILED: timestamp_epoch not backfilled" >&2; return 1; }
 
     result=$(sqlite3 "$test_db" "SELECT source, memory_kind, auto_inject_policy, project_root, expires_at FROM memories WHERE id='mem_legacy_backfill';")
-    [[ "$result" == *"stop_summary"* ]] || { echo "SELF-TEST FAILED: 未回填 source=stop_summary" >&2; return 1; }
-    [[ "$result" == *"working"* ]] || { echo "SELF-TEST FAILED: 未回填 memory_kind=working" >&2; return 1; }
-    [[ "$result" == *"conditional"* ]] || { echo "SELF-TEST FAILED: 未回填 auto_inject_policy=conditional" >&2; return 1; }
-    [[ "$result" == *"/legacy/project"* ]] || { echo "SELF-TEST FAILED: 未回填 project_root" >&2; return 1; }
-    [[ "$result" == *"-"* || "$result" == *":"* ]] || { echo "SELF-TEST FAILED: 未回填 expires_at" >&2; return 1; }
+    [[ "$result" == *"stop_summary"* ]] || { echo "SELF-TEST FAILED: source=stop_summary not backfilled" >&2; return 1; }
+    [[ "$result" == *"working"* ]] || { echo "SELF-TEST FAILED: memory_kind=working not backfilled" >&2; return 1; }
+    [[ "$result" == *"conditional"* ]] || { echo "SELF-TEST FAILED: auto_inject_policy=conditional not backfilled" >&2; return 1; }
+    [[ "$result" == *"/legacy/project"* ]] || { echo "SELF-TEST FAILED: project_root not backfilled" >&2; return 1; }
+    [[ "$result" == *"-"* || "$result" == *":"* ]] || { echo "SELF-TEST FAILED: expires_at not backfilled" >&2; return 1; }
 
     sqlite3 "$test_db" "SELECT name FROM sqlite_master WHERE type='table' AND name='project_links';" | grep -q "project_links" \
-        || { echo "SELF-TEST FAILED: 未创建 project_links 表" >&2; return 1; }
+        || { echo "SELF-TEST FAILED: project_links table not created" >&2; return 1; }
 
     DB_PATH="$old_db"
     DO_BACKUP="$old_backup"

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Stop Hook - 会话停止/中断时捕获记忆和生成摘要
-# 由 Claude Code hooks 系统调用
-# 与 SessionEnd 的区别：Stop 可以访问 transcript 文件
+# Stop Hook - Capture memory and generate summary when session stops/interrupts
+# Called by Claude Code hooks system
+# Difference from SessionEnd: Stop can access transcript file
 
 # 不设置 set -e，允许脚本继续执行即使部分命令失败
 
@@ -99,16 +99,16 @@ generate_session_summary() {
         if [ "${#first_line}" -gt 150 ]; then
             first_line="${first_line:0:150}..."
         fi
-        summary="最后工作: $first_line"
+        summary="Last work: $first_line"
     fi
 
-    # 如果有操作日志，添加操作统计
+    # If there's operation log, add operation stats
     if [ -n "$operation_log" ]; then
         local file_change_count=$(echo "$operation_log" | grep -c '\[FILE_CHANGE\]' 2>/dev/null || echo "0")
         local bash_count=$(echo "$operation_log" | grep -c '\[BASH\]' 2>/dev/null || echo "0")
 
         if [ "$file_change_count" -gt 0 ] || [ "$bash_count" -gt 0 ]; then
-            local stats="操作统计: "
+            local stats="Stats: "
             [ "$file_change_count" -gt 0 ] && stats="${stats}Files=${file_change_count} "
             [ "$bash_count" -gt 0 ] && stats="${stats}Bash=${bash_count} "
 
@@ -200,7 +200,7 @@ EOF
             2>/dev/null; then
             > "$LOG_FILE"
             echo "[stop] $(date): Buffered log cleared after stop_summary capture" >> "$CCMEM_DEBUG_LOG"
-            echo "[CC-Mem] 已保存停止时的记忆：$SESSION_ID"
+            echo "[CC-Mem] Stop memory saved: $SESSION_ID"
             echo "[stop] $(date): Memory saved from operation log" >> "$CCMEM_DEBUG_LOG"
         else
             local queued_path=""
@@ -210,7 +210,7 @@ EOF
             else
                 echo "[stop] $(date): Capture failed and queue fallback failed, keeping buffered log" >> "$CCMEM_DEBUG_LOG"
             fi
-            echo "[CC-Mem] 停止记忆保存失败，已入队待重试：$SESSION_ID"
+            echo "[CC-Mem] Stop memory save failed, queued for retry: $SESSION_ID"
         fi
     fi
 
@@ -232,7 +232,7 @@ EOF
         # 保存为记忆
         local final_response_log
         final_response_log=$(mktemp "/tmp/ccmem_final_response_${SESSION_ID}_XXXXXX.log" 2>/dev/null || echo "/tmp/ccmem_final_response_${SESSION_ID}_$$.log")
-        printf "=== 会话停止时的最后回复 ===\n%s\n" "$filtered_message" > "$final_response_log"
+        printf "=== Final response at session stop ===\n%s\n" "$filtered_message" > "$final_response_log"
         if cat "$final_response_log" | "$CLI" capture \
             -p "$PROJECT_PATH" \
             -c "context" \
@@ -256,7 +256,7 @@ EOF
 
     run_opportunistic_cleanup "stop" 30 50 "$(get_cleanup_throttle_seconds)" "$PROJECT_PATH" || true
 
-    echo "[CC-Mem] 会话已停止：$SESSION_ID"
+    echo "[CC-Mem] Session stopped: $SESSION_ID"
     echo "[stop] $(date): END" >> "$CCMEM_DEBUG_LOG"
 }
 

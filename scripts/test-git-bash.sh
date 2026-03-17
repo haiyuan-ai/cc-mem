@@ -1,9 +1,9 @@
 #!/bin/bash
-# CC-Mem Git Bash 兼容性测试脚本
-# 用法：在 Git Bash 中运行 bash test-git-bash.sh
+# CC-Mem Git Bash Compatibility Test Script
+# Usage: Run in Git Bash: bash test-git-bash.sh
 
 echo "=============================================="
-echo "     CC-Mem Git Bash 兼容性测试"
+echo "     CC-Mem Git Bash Compatibility Test"
 echo "=============================================="
 echo ""
 
@@ -11,7 +11,7 @@ PASS=0
 FAIL=0
 WARN=0
 
-# 测试函数
+# Test function
 test_case() {
     local name="$1"
     local result="$2"
@@ -31,196 +31,196 @@ warn_case() {
     WARN=$((WARN + 1))
 }
 
-# 1. 环境检测
-echo "=== 1. 环境信息 ==="
+# 1. Environment detection
+echo "=== 1. Environment Info ==="
 echo "  uname -s: $(uname -s)"
 echo "  uname -r: $(uname -r)"
-echo "  Bash 版本：$(bash --version 2>&1 | head -1)"
+echo "  Bash version: $(bash --version 2>&1 | head -1)"
 echo "  HOME: $HOME"
-echo "  USERPROFILE: ${USERPROFILE:-未设置}"
+echo "  USERPROFILE: ${USERPROFILE:-not set}"
 echo ""
 
 if [[ "$(uname -s)" == "MSYS"* ]] || [[ "$(uname -s)" == "MINGW"* ]]; then
-    echo "  ✅ 检测到 Git Bash 环境"
-    test_case "Git Bash 环境检测" 0
+    echo "  ✅ Git Bash environment detected"
+    test_case "Git Bash environment detection" 0
 else
-    echo "  ⚠️  不是 Git Bash 环境，部分测试可能不准确"
-    warn_case "非 Git Bash 环境"
+    echo "  ⚠️  Not Git Bash environment, some tests may be inaccurate"
+    warn_case "Non-Git Bash environment"
 fi
 echo ""
 
-# 2. 路径处理测试
-echo "=== 2. 路径处理测试 ==="
+# 2. Path handling tests
+echo "=== 2. Path Handling Tests ==="
 
-# 测试 HOME 路径
+# Test HOME path
 if [ -n "$HOME" ]; then
-    test_case "HOME 变量已设置" 0
+    test_case "HOME variable set" 0
 else
-    test_case "HOME 变量已设置" 1
+    test_case "HOME variable set" 1
 fi
 
-# 测试 USERPROFILE（Git Bash 特有）
+# Test USERPROFILE (Git Bash specific)
 if [ -n "$USERPROFILE" ]; then
-    test_case "USERPROFILE 变量已设置" 0
+    test_case "USERPROFILE variable set" 0
 else
-    warn_case "USERPROFILE 变量未设置（正常，可能不是 Git Bash）"
+    warn_case "USERPROFILE variable not set (OK, may not be Git Bash)"
 fi
 
-# 测试路径存在性
+# Test path existence
 TEST_DIR="$HOME/.claude/cc-mem"
 if [ -d "$TEST_DIR" ] || [[ "$(uname -s)" != "MSYS"* && "$(uname -s)" != "MINGW"* ]]; then
-    test_case "目录路径可访问" 0
+    test_case "Directory path accessible" 0
 else
-    test_case "目录路径可访问" 1
+    test_case "Directory path accessible" 1
 fi
 echo ""
 
-# 3. 命令兼容性测试
-echo "=== 3. 命令兼容性测试 ==="
+# 3. Command compatibility tests
+echo "=== 3. Command Compatibility Tests ==="
 
 # sqlite3
 if command -v sqlite3 &> /dev/null; then
-    test_case "sqlite3 命令可用" 0
+    test_case "sqlite3 command available" 0
 else
-    test_case "sqlite3 命令可用" 1
-    echo "     提示：choco install sqlite"
+    test_case "sqlite3 command available" 1
+    echo "     Hint: choco install sqlite"
 fi
 
 # grep
 if echo "test" | grep -o "e" &> /dev/null; then
-    test_case "grep -o 可用" 0
+    test_case "grep -o available" 0
 else
-    test_case "grep -o 可用" 1
+    test_case "grep -o available" 1
 fi
 
 # sed
 if echo "test" | sed 's/test/ok/' &> /dev/null; then
-    test_case "sed 替换可用" 0
+    test_case "sed substitution available" 0
 else
-    test_case "sed 替换可用" 1
+    test_case "sed substitution available" 1
 fi
 
 # date
 if date +%s &> /dev/null; then
-    test_case "date +%s 可用" 0
+    test_case "date +%s available" 0
 else
-    test_case "date +%s 可用" 1
+    test_case "date +%s available" 1
 fi
 
-# date -Iseconds (可选)
+# date -Iseconds (optional)
 if date -Iseconds &> /dev/null 2>&1; then
-    test_case "date -Iseconds 可用" 0
+    test_case "date -Iseconds available" 0
 else
-    warn_case "date -Iseconds 不可用（正常，cc-mem 有回退）"
+    warn_case "date -Iseconds not available (OK, cc-mem has fallback)"
 fi
 
 # du
 if du -h "$HOME" &> /dev/null 2>&1; then
-    test_case "du -h 可用" 0
+    test_case "du -h available" 0
 else
-    warn_case "du -h 不可用（cc-mem 有回退方案）"
+    warn_case "du -h not available (cc-mem has fallback)"
 fi
 
 # /dev/urandom
 if [ -e /dev/urandom ]; then
-    test_case "/dev/urandom 可用" 0
+    test_case "/dev/urandom available" 0
 else
-    warn_case "/dev/urandom 不可用（cc-mem 使用\$RANDOM 回退）"
+    warn_case "/dev/urandom not available (cc-mem uses \$RANDOM fallback)"
 fi
 echo ""
 
-# 4. cc-mem 脚本加载测试
-echo "=== 4. cc-mem 脚本加载测试 ==="
+# 4. cc-mem script loading tests
+echo "=== 4. cc-mem Script Loading Tests ==="
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CCMEM_DIR="$(dirname "$SCRIPT_DIR")"
 
-# 测试 sqlite.sh 加载
+# Test sqlite.sh loading
 if [ -f "$CCMEM_DIR/lib/sqlite.sh" ]; then
-    # 尝试加载（不执行）
+    # Try loading (not executing)
     if bash -n "$CCMEM_DIR/lib/sqlite.sh" 2>&1; then
-        test_case "sqlite.sh 语法检查" 0
+        test_case "sqlite.sh syntax check" 0
     else
-        test_case "sqlite.sh 语法检查" 1
+        test_case "sqlite.sh syntax check" 1
     fi
 else
-    test_case "sqlite.sh 文件存在" 1
+    test_case "sqlite.sh file exists" 1
 fi
 
-# 测试 ccmem-cli.sh 加载
+# Test ccmem-cli.sh loading
 if [ -f "$CCMEM_DIR/bin/ccmem-cli.sh" ]; then
     if bash -n "$CCMEM_DIR/bin/ccmem-cli.sh" 2>&1; then
-        test_case "ccmem-cli.sh 语法检查" 0
+        test_case "ccmem-cli.sh syntax check" 0
     else
-        test_case "ccmem-cli.sh 语法检查" 1
+        test_case "ccmem-cli.sh syntax check" 1
     fi
 else
-    test_case "ccmem-cli.sh 文件存在" 1
+    test_case "ccmem-cli.sh file exists" 1
 fi
 echo ""
 
-# 5. 实际功能测试（如果有数据库）
-echo "=== 5. 实际功能测试 ==="
+# 5. Actual function tests (if database exists)
+echo "=== 5. Actual Function Tests ==="
 
 if [ -f "$HOME/.claude/cc-mem/memory.db" ]; then
-    # 测试数据库连接
+    # Test database connection
     RESULT=$(sqlite3 "$HOME/.claude/cc-mem/memory.db" "SELECT COUNT(*) FROM memories;" 2>&1)
     if [ $? -eq 0 ]; then
-        test_case "SQLite 数据库连接" 0
-        echo "     记忆数量：$RESULT"
+        test_case "SQLite database connection" 0
+        echo "     Memory count: $RESULT"
     else
-        test_case "SQLite 数据库连接" 1
-        echo "     错误：$RESULT"
+        test_case "SQLite database connection" 1
+        echo "     Error: $RESULT"
     fi
 
-    # 测试 ccmem-cli.sh status
+    # Test ccmem-cli.sh status
     if [ -x "$CCMEM_DIR/bin/ccmem-cli.sh" ]; then
         OUTPUT=$("$CCMEM_DIR/bin/ccmem-cli.sh" status 2>&1)
-        if echo "$OUTPUT" | grep -q "记忆数量"; then
-            test_case "ccmem-cli.sh status 运行" 0
+        if echo "$OUTPUT" | grep -q "Memories"; then
+            test_case "ccmem-cli.sh status runs" 0
         else
-            test_case "ccmem-cli.sh status 运行" 1
+            test_case "ccmem-cli.sh status runs" 1
         fi
     fi
 else
-    warn_case "数据库不存在，跳过功能测试"
-    echo "     提示：运行 ccmem-cli.sh init 初始化"
+    warn_case "Database not found, skipping function tests"
+    echo "     Hint: Run ccmem-cli.sh init to initialize"
 fi
 echo ""
 
-# 6. Git Bash 特定测试
-echo "=== 6. Git Bash 特定测试 ==="
+# 6. Git Bash specific tests
+echo "=== 6. Git Bash Specific Tests ==="
 
 if [[ "$(uname -s)" == "MSYS"* ]] || [[ "$(uname -s)" == "MINGW"* ]]; then
-    # 仅在 Git Bash 下运行
+    # Only run in Git Bash
 
-    # 测试路径转换
+    # Test path conversion
     if command -v cygpath &> /dev/null; then
         WIN_PATH=$(cygpath -w "$HOME" 2>&1)
         if [ $? -eq 0 ]; then
-            test_case "cygpath 路径转换" 0
-            echo "     Windows 路径：$WIN_PATH"
+            test_case "cygpath path conversion" 0
+            echo "     Windows path: $WIN_PATH"
         else
-            test_case "cygpath 路径转换" 1
+            test_case "cygpath path conversion" 1
         fi
     else
-        warn_case "cygpath 不可用"
+        warn_case "cygpath not available"
     fi
 
-    # 测试 USERPROFILE 回退
+    # Test USERPROFILE fallback
     if [ -n "$USERPROFILE" ] && [ "$HOME" = "$USERPROFILE" ]; then
-        test_case "HOME=USERPROFILE 回退" 0
+        test_case "HOME=USERPROFILE fallback" 0
     else
-        warn_case "HOME=USERPROFILE 回退未触发"
+        warn_case "HOME=USERPROFILE fallback not triggered"
     fi
 else
-    echo "  (仅在 Git Bash 下运行特定测试)"
+    echo "  (Git Bash specific tests only)"
     echo ""
 fi
 
-# 总结
+# Summary
 echo "=============================================="
-echo "     测试结果总结"
+echo "     Test Summary"
 echo "=============================================="
 echo "  ✅ PASS: $PASS"
 echo "  ⚠️  WARN: $WARN"
@@ -228,9 +228,9 @@ echo "  ❌ FAIL: $FAIL"
 echo ""
 
 if [ $FAIL -eq 0 ]; then
-    echo "  🎉 所有测试通过！cc-mem 可以在 Git Bash 下正常运行。"
+    echo "  🎉 All tests passed! cc-mem can run in Git Bash."
     exit 0
 else
-    echo "  ⚠️  有 $FAIL 个测试失败，请检查上述输出。"
+    echo "  ⚠️  $FAIL test(s) failed, please check output above."
     exit 1
 fi

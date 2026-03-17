@@ -1,6 +1,6 @@
 #!/bin/bash
-# UserPromptSubmit Hook - 用户提交提示时捕获上一轮对话记忆
-# 由 Claude Code hooks 系统调用
+# UserPromptSubmit Hook - Capture previous conversation when user submits prompt
+# Called by Claude Code hooks system
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"

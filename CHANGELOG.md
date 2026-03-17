@@ -1,5 +1,16 @@
 # CC-mem 变更日志
 
+## [1.5.4] - 2026-03-17
+
+### Fixed
+
+#### 1. FTS5 查询语法错误修复 (lib/sqlite.sh, lib/injection.sh)
+- **问题**: `query_recall_memories_for_root()` 中 FTS5 查询直接使用用户输入，特殊字符（如 `.`、`*`、`"` 等）会被解释为 FTS5 操作符，导致 `fts5: syntax error` 错误
+- **修复**:
+  - 新增 `sql_escape_fts5()` 函数，将查询词用双引号包裹使其成为短语查询，内部双引号转义为两个双引号
+  - `query_recall_memories_for_root()` 改用 `sql_escape_fts5` 处理 FTS MATCH 子句
+  - 修复后 `"v1.5.3"`、`"1.5.3"`、`"test*"` 等包含特殊字符的查询都能正常工作
+
 ## [1.5.3] - 2026-03-13
 
 ### Added

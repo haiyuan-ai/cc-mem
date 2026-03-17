@@ -8,7 +8,7 @@
     {
       "name": "cc-mem",
       "description": "轻量级 Claude Code 记忆管理系统 - 纯 Bash 实现，支持 MCP 工具接入",
-      "version": "1.5.3",
+      "version": "1.5.4",
       "author": {
         "name": "haiyuan-ai"
       },

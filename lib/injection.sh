@@ -369,11 +369,13 @@ query_recall_memories_for_root() {
     local query="$2"
     local limit="${3:-3}"
     local query_escaped
+    local query_fts5_escaped
     local query_like_escaped
     local project_root_escaped
 
     project_root_escaped=$(sql_escape "$project_root")
     query_escaped=$(sql_escape "$query")
+    query_fts5_escaped=$(sql_escape_fts5 "$query")
     query_like_escaped=$(sql_escape_like "$query")
 
     if contains_cjk "$query"; then
@@ -384,7 +386,7 @@ WHERE project_root = '$project_root_escaped'
   AND auto_inject_policy IN ('always', 'conditional')
   AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
   AND (
-      rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+      rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_fts5_escaped')
       OR content LIKE '%${query_like_escaped}%' ESCAPE '\'
       OR summary LIKE '%${query_like_escaped}%' ESCAPE '\'
       OR tags LIKE '%${query_like_escaped}%' ESCAPE '\'
@@ -403,7 +405,7 @@ WHERE project_root = '$project_root_escaped'
   AND auto_inject_policy IN ('always', 'conditional')
   AND (expires_at IS NULL OR expires_at = '' OR expires_at > datetime('now'))
   AND (
-      rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_escaped')
+      rowid IN (SELECT rowid FROM memories_fts WHERE memories_fts MATCH '$query_fts5_escaped')
       OR content LIKE '%${query_like_escaped}%' ESCAPE '\'
       OR summary LIKE '%${query_like_escaped}%' ESCAPE '\'
       OR tags LIKE '%${query_like_escaped}%' ESCAPE '\'

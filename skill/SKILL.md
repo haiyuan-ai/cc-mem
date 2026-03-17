@@ -6,7 +6,7 @@ triggers:
   - /cc-mem
   - /ccmem
 author: haiyuan-ai
-version: 1.5.3
+version: 1.5.4
 ---
 
 # CC-Mem

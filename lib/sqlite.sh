@@ -26,6 +26,18 @@ sql_escape_like() {
     printf "%s" "$value" | sed "s/'/''/g" | sed 's/\\/\\\\/g; s/%/\\%/g; s/_/\\_/g'
 }
 
+# 转义 FTS5 查询字符串。
+# FTS5 特殊字符（如 . " * ^ ( ) 等）会被解释为操作符，
+# 将查询用双引号包裹可将其视为字面量短语。
+sql_escape_fts5() {
+    local value="$1"
+    # 先转义单引号用于 SQL，再处理 FTS5 双引号
+    local escaped
+    escaped=$(printf "%s" "$value" | sed "s/'/''/g" | sed 's/"/""/g')
+    # 用双引号包裹，使其成为 FTS5 短语查询
+    printf '"%s"' "$escaped"
+}
+
 # 检测查询中是否包含 CJK 字符，用于决定是否启用 LIKE 回退。
 contains_cjk() {
     local value="$1"

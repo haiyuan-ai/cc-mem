@@ -9,7 +9,7 @@ REPO="cc-mem"
 MARKETPLACE_NAME="${OWNER}-${REPO}"
 CLAUDE_DIR="${HOME}/.claude/plugins"
 INSTALL_DIR="${CLAUDE_DIR}/marketplaces/${MARKETPLACE_NAME}"
-SKILL_FILE="${HOME}/.claude/skills/cc-mem.md"
+SKILL_DIR="${HOME}/.claude/skills/cc-mem"
 
 echo "🗑️  Uninstalling CC-Mem..."
 
@@ -23,12 +23,12 @@ else
 fi
 
 # 2. Remove Skill
-if [ -f "$SKILL_FILE" ]; then
-    echo "  Removing Skill: ${SKILL_FILE}"
-    rm -f "$SKILL_FILE"
+if [ -d "$SKILL_DIR" ]; then
+    echo "  Removing Skill: ${SKILL_DIR}"
+    rm -rf "$SKILL_DIR"
     echo "    ✅ Skill removed"
 else
-    echo "    ⚠️  Skill file not found, skipping"
+    echo "    ⚠️  Skill directory not found, skipping"
 fi
 
 # 3. Clean up marketplace registration (optional)

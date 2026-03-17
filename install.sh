@@ -92,11 +92,11 @@ echo "  Initializing database..."
 
 # 2.5 Install Skill
 echo "  Installing Skill..."
-SKILL_DIR="${HOME}/.claude/skills"
-SKILL_SOURCE="${INSTALL_DIR}/skill/cc-mem.md"
+SKILL_DIR="${HOME}/.claude/skills/cc-mem"
+SKILL_SOURCE="${INSTALL_DIR}/skill/SKILL.md"
 mkdir -p "$SKILL_DIR"
 if [ -f "$SKILL_SOURCE" ]; then
-    cp "$SKILL_SOURCE" "$SKILL_DIR/cc-mem.md"
+    cp "$SKILL_SOURCE" "$SKILL_DIR/SKILL.md"
     echo "    ✅ Skill installed"
 else
     echo "    ⚠️  Skill file not found, skipping"
@@ -202,7 +202,7 @@ echo ""
 echo "✅ CC-Mem ${DISPLAY_VERSION} installation complete!"
 echo ""
 echo "📍 Install location: ${INSTALL_DIR}"
-echo "🎯 Skill location: ~/.claude/skills/cc-mem.md"
+echo "🎯 Skill location: ~/.claude/skills/cc-mem/SKILL.md"
 echo ""
 echo "🚀 Quick start:"
 echo "   CLI:  ${INSTALL_DIR}/bin/ccmem-cli.sh status    # Check status"
